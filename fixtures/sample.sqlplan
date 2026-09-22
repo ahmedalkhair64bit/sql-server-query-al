@@ -1,0 +1,31 @@
+﻿<?xml version="1.0" encoding="utf-16"?>
+<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan" Version="1.6" Build="16.0.4085.2">
+ <BatchSequence><Batch><Statements>
+  <StmtSimple StatementId="1" StatementSubtreeCost="4.871" StatementOptmLevel="FULL"
+              StatementText="SELECT o.Id FROM Sales.Orders o WHERE o.CustomerId = @c1 AND o.Total &gt; 500">
+   <StatementOptmEarlyAbortReason>GoodEnoughPlanFound</StatementOptmEarlyAbortReason>
+   <QueryBlock QueryHash="0x1A" QueryPlanHash="0x2B">
+    <RelOp NodeId="0" PhysicalOp="Clustered Index Scan" LogicalOp="Clustered Index Scan" EstimateRows="1000"
+           EstimateIO="41.6" EstimateCPU="39.0" EstimatedTotalSubtreeCost="4.10" Parallel="false">
+      <RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="1243500" ActualExecs="1"
+        ActualElapsedms="2411" ActualCPUms="2210"/></RunTimeInformation>
+      <IndexScan Database="[wide]" Schema="[Sales]" Table="[Orders]"/>
+      <Warnings><NoJoinPredicate/><SpillToTempDb SpillLevel="2"/>
+        <WaitTime WaitType="PAGEIOLATCH_SH" WaitTime="812"/></Warnings>
+    </RelOp>
+    <RelOp NodeId="1" PhysicalOp="Index Seek" LogicalOp="Index Seek" EstimateRows="3"
+           EstimateIO="0.7" EstimateCPU="0.02" EstimatedTotalSubtreeCost="0.77" Parallel="true">
+      <RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="4" ActualExecs="2"/></RunTimeInformation>
+      <IndexScan Database="[wide]" Schema="[Sales]" Table="[Customer]"/>
+    </RelOp>
+    <MissingIndexes><MissingIndexGroup Impact="94.17">
+      <MissingIndex Database="[wide]" Schema="[Sales]" Table="[Orders]">
+        <ColumnGroup Usage="EQUALITY"><Column Name="[CustomerId]"/></ColumnGroup>
+        <ColumnGroup Usage="INEQUALITY"><Column Name="[Total]"/></ColumnGroup>
+        <IncludedColumns><Column Name="[Id]"/></IncludedColumns>
+      </MissingIndex></MissingIndexGroup></MissingIndexes>
+    <NonParallelPlanReason>Could Not Generate Valid Parallel Plan</NonParallelPlanReason>
+   </QueryBlock>
+  </StmtSimple>
+ </Statements></Batch></BatchSequence>
+</ShowPlanXML>

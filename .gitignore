@@ -1,0 +1,48 @@
+# next
+/node_modules
+/.next
+/out
+/build
+next-env.d.ts
+*.tsbuildinfo
+
+# env + secrets
+.env*
+!.env.example
+
+# runtime data (sqlite)
+/data
+/.playwright-data
+.qa-data/
+
+# e2e artifacts
+/.auth
+/test-results
+/playwright-report
+
+# e2e fixture input is committed; scratch output is not
+.DS_Store
+.playwright-data
+
+# real production plans dropped in for debugging stay out of git
+/plan-*.sqlplan
+
+# generated knowledge graph (regenerate with /understand)
+.ua/
+
+# Local visual QA artifacts
+/artifacts/
+
+# Never publish credentials, databases, or production execution plans.
+*.db
+*.db-*
+*.sqlite*
+*.pem
+*.key
+*.sqlplan
+!fixtures/sample.sqlplan
+._*
+.hallmark/
+*.tgz
+*.tar
+*.zip

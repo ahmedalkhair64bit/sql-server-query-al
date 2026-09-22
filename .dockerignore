@@ -1,0 +1,27 @@
+# Allow only application build inputs. Never send local accounts, plans,
+# credentials, QA recordings, or knowledge-base material to the builder.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!next.config.ts
+!next-env.d.ts
+!tsconfig.json
+!app/
+!app/**
+!components/
+!components/**
+!lib/
+!lib/**
+!public/
+!public/**
+# Defense in depth, including files accidentally placed under allowed trees.
+**/.env*
+**/*.sqlplan
+**/*.db
+**/*.db-*
+**/*.sqlite*
+**/*.pem
+**/*.key
+**/node_modules/**

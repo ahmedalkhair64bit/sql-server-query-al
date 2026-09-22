@@ -1,0 +1,11 @@
+services:
+  qai:
+    image: ${QAI_IMAGE:-worlber/sql-server-query-al:20260922}
+    build: .
+    ports: ["3000:3000"]
+    environment:
+      APP_SECRET: ${APP_SECRET:?set APP_SECRET in .env, 16+ chars}
+    volumes: ["qai-data:/data"]
+    restart: unless-stopped
+volumes:
+  qai-data:

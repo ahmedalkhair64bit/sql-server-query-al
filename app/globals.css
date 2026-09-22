@@ -1,0 +1,9 @@
+@import "./tokens.css";
+@import "./ui.css";
+
+html, body { overflow-x: clip; }
+body { background: var(--qai-paper); color: var(--qai-ink); font-family: var(--qai-font-body);
+       font-size: var(--qai-text-base); line-height: 1.5; margin: 0; }
+* { box-sizing: border-box; }
+:focus-visible { outline: 2px solid var(--qai-focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
