@@ -34,6 +34,15 @@ export const PROVIDERS: Provider[] = [
     models: ["gemini-2.5-pro", "gemini-2.5-flash"],
   },
   {
+    id: "deepseek",
+    label: "DeepSeek",
+    baseUrl: "https://api.deepseek.com/v1",
+    urlHint:
+      "DeepSeek's models reason before answering: set Maximum response length to 16,000 or more, or answers are cut off. Expect 1 to 3 minutes per analysis.",
+    keyHint: "platform.deepseek.com → API keys",
+    models: ["deepseek-v4-pro", "deepseek-flash"],
+  },
+  {
     id: "openrouter",
     label: "OpenRouter",
     baseUrl: "https://openrouter.ai/api/v1",

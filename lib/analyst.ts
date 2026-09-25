@@ -143,43 +143,65 @@ export async function proposeCandidates(
   fetchImpl: typeof fetch = fetch,
   signal?: AbortSignal,
 ): Promise<Candidate[]> {
-  const res = await fetchImpl(`${cfg.baseUrl}/chat/completions`, {
-    method: "POST",
-    signal,
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${cfg.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: cfg.model,
-      temperature: 0.6,
-      max_tokens: 4096,
-      ...cfg.extra,
-      stream: false,
-      messages: [
-        { role: "system", content: CANDIDATE_SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: JSON.stringify({
-            digest: digestForModel(digest),
-            user_note: note || null,
-          }),
-        },
-      ],
-    }),
-  }).catch((e) => {
+  // Reasoning models (DeepSeek, Qwen3, o-series) spend part of max_tokens thinking; a long think can leave
+  // the answer cut off or empty. Measured on DeepSeek V4-Pro: 13,000 of 14,700 output tokens were reasoning.
+  // A cut-off answer is retried once with twice the ceiling before it is reported.
+  const ceiling = Number(cfg.extra.max_tokens ?? 4096);
+  const call = async (maxTokens: number) => {
+    const res = await fetchImpl(`${cfg.baseUrl}/chat/completions`, {
+      method: "POST",
+      signal,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${cfg.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: cfg.model,
+        temperature: 0.6,
+        ...cfg.extra,
+        max_tokens: maxTokens,
+        stream: false,
+        messages: [
+          { role: "system", content: CANDIDATE_SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: JSON.stringify({
+              digest: digestForModel(digest),
+              user_note: note || null,
+            }),
+          },
+        ],
+      }),
+    }).catch((e) => {
+      throw new AnalystError(
+        `Could not reach ${cfg.baseUrl}: ${(e as Error).message}`,
+      );
+    });
+    if (!res.ok)
+      throw new AnalystError(
+        `Analyst model returned HTTP ${res.status}. ${(await res.text()).slice(0, 300)}`,
+      );
+    const choice = (
+      (await res.json()) as {
+        choices?: { message?: { content?: string }; finish_reason?: string }[];
+      }
+    )?.choices?.[0];
+    return {
+      content: choice?.message?.content ?? "",
+      cutOff: choice?.finish_reason === "length",
+    };
+  };
+  let { content, cutOff } = await call(ceiling);
+  if (cutOff && ceiling < 65536)
+    ({ content, cutOff } = await call(Math.min(ceiling * 2, 65536)));
+  if (cutOff)
     throw new AnalystError(
-      `Could not reach ${cfg.baseUrl}: ${(e as Error).message}`,
+      content.trim()
+        ? `The analyst model's answer was cut off at the response-length limit. Raise the maximum response length in Settings.`
+        : `The analyst model spent its whole response budget reasoning and returned no answer. Raise the maximum response length in Settings (reasoning models need 32,000 or more).`,
     );
-  });
-
-  if (!res.ok)
-    throw new AnalystError(
-      `Analyst model returned HTTP ${res.status}. ${(await res.text()).slice(0, 300)}`,
-    );
-  const content: string =
-    ((await res.json()) as { choices?: { message?: { content?: string } }[] })
-      ?.choices?.[0]?.message?.content ?? "";
+  if (!content.trim())
+    throw new AnalystError("The analyst model returned an empty answer.");
   const parsed = Proposal.safeParse(extractJson(content));
   if (!parsed.success) {
     const n =

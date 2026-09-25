@@ -7,7 +7,8 @@
 //
 // This isolates Jev's judgment from the analyst model: no analyst key is needed.
 import { readFileSync } from "node:fs";
-import { parsePlanText } from "../lib/plan-parser.mjs";
+import { parsePlanText, recommendStatement } from "../lib/plan-parser.mjs";
+import { decodeBytes } from "../lib/plan-decoder.mjs";
 
 const key = process.env.JEV_API_KEY;
 if (!key) {
@@ -410,6 +411,49 @@ const CASES = {
       "Usable index.",
     ),
   ],
+  "complex-report.sqlplan": [
+    opt(
+      "orderlines_cover",
+      "index",
+      "Covering index on OrderLines (OrderId)",
+      "The Key Lookup on OrderLines runs 6.3 million times (17.5 s own time, 19.8 million reads) because IX_OrderLines_OrderId lacks ProductId, Quantity and UnitPrice; the optimizer suggests the same index at 81% impact.",
+      "CREATE NONCLUSTERED INDEX IX_OrderLines_OrderId_Cover ON dbo.OrderLines (OrderId) INCLUDE (OrderLineId, ProductId, Quantity, UnitPrice) WITH (ONLINE = ON);",
+      "The Key Lookup disappears: about 20 million fewer logical reads and roughly 17 s less elapsed time.",
+      {
+        rollback: "DROP INDEX IX_OrderLines_OrderId_Cover ON dbo.OrderLines;",
+        effort: "medium",
+      },
+    ),
+    opt(
+      "recompile",
+      "rewrite",
+      "OPTION (RECOMPILE) for the segment and date parameters",
+      "The plan was compiled for N'SMB' from 2026-08-01 and reused for N'Enterprise' from 2026-01-01; customers were estimated at 1,200 rows and 480,000 arrived, so the hash join spilled and nested loops ran millions of times.",
+      "WITH recent AS (SELECT o.OrderId, o.CustomerId FROM dbo.Orders AS o WHERE o.OrderDate >= @from) SELECT r.Name AS Region, p.Category, SUM(ol.Quantity * ol.UnitPrice) - ISNULL(SUM(rt.Amount), 0) AS Revenue FROM recent AS o JOIN dbo.Customers AS c ON c.CustomerId = o.CustomerId JOIN dbo.Regions AS r ON r.RegionId = c.RegionId JOIN dbo.OrderLines AS ol ON ol.OrderId = o.OrderId JOIN dbo.Products AS p ON p.ProductId = ol.ProductId LEFT JOIN dbo.Returns AS rt ON rt.OrderLineId = ol.OrderLineId WHERE c.Segment = @segment GROUP BY r.Name, p.Category ORDER BY Revenue DESC OPTION (RECOMPILE)",
+      "Each run gets estimates for its own segment and dates, so the memory grant fits and the optimizer can choose hash joins instead of millions of lookups.",
+    ),
+    opt(
+      "refresh_customers",
+      "statistics",
+      "Refresh statistics on Customers",
+      "Customer statistics may be stale.",
+      "UPDATE STATISTICS dbo.Customers WITH FULLSCAN;",
+      "Possibly better estimates.",
+    ),
+    opt(
+      "maxdop_server",
+      "ops",
+      "Set MAXDOP 1 for the whole server",
+      "CXPACKET waits are high, so parallelism is the problem.",
+      null,
+      "No parallel waits.",
+      {
+        detail:
+          "EXEC sp_configure 'max degree of parallelism', 1; RECONFIGURE;",
+        cc: true,
+      },
+    ),
+  ],
   "linked-server.sqlplan": [
     opt(
       "openquery",
@@ -443,9 +487,9 @@ const only = process.argv.includes("--only")
   : null;
 for (const [file, options] of Object.entries(CASES)) {
   if (only && !only.includes(file)) continue;
-  const digest = parsePlanText(
-    readFileSync(`fixtures/eval/${file}`, "utf8"),
-  )[0];
+  const digest = recommendStatement(
+    parsePlanText(decodeBytes(readFileSync(`fixtures/eval/${file}`))),
+  );
   const ids = digestForModel(digest).evidence;
   const cite = [
     ids[0].id,

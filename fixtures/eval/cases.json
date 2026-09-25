@@ -68,8 +68,10 @@
         "missing_index"
       ],
       "correct_fix_types": [
-        "index"
-      ]
+        "index",
+        "ops"
+      ],
+      "why": "Estimated plan: the index is the fix, but capturing the actual plan first (ops) is the safer first action with no runtime evidence."
     },
     {
       "file": "scalar-udf.sqlplan",
@@ -78,8 +80,10 @@
         "scalar_udf"
       ],
       "correct_fix_types": [
-        "rewrite"
-      ]
+        "rewrite",
+        "ops"
+      ],
+      "why": "Inlining the function by hand (rewrite) or enabling scalar UDF inlining (ops, compatibility level 150+) both remove the per-row calls."
     },
     {
       "file": "table-variable.sqlplan",
@@ -186,6 +190,24 @@
       "correct_fix_types": [
         "rewrite",
         "app"
+      ]
+    },
+    {
+      "file": "complex-report.sqlplan",
+      "description": "Month-end report batch: 3 statements; the main one joins 7 tables at DOP 8, runs 48 s with 210 s CPU. A key lookup runs 6.3 million times (the largest own time), the plan was compiled for a different segment and date range, a hash join spills because 1,200 customers were estimated and 480,000 arrived, one thread does 69% of the Orders scan, statistics are stale, and Segment is implicitly converted.",
+      "expect_findings": [
+        "key_lookup",
+        "parameter_sniffing",
+        "tempdb_spill",
+        "row_estimate_error",
+        "parallel_skew",
+        "stale_statistics",
+        "missing_index",
+        "implicit_conversion"
+      ],
+      "correct_fix_types": [
+        "index",
+        "rewrite"
       ]
     }
   ]
