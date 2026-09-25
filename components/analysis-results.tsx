@@ -182,6 +182,44 @@ export function AnalysisResults({
               </small>
             </div>
           </div>
+          {(digest.queryTime || digest.memoryGrant) && (
+            <div className="grid-metrics">
+              {digest.queryTime?.elapsedMs != null && (
+                <div>
+                  <span>Measured elapsed time</span>
+                  <strong>
+                    {digest.queryTime.elapsedMs.toLocaleString()} ms
+                  </strong>
+                  <small>
+                    CPU {digest.queryTime.cpuMs?.toLocaleString() ?? "—"} ms
+                  </small>
+                </div>
+              )}
+              {digest.memoryGrant?.grantedKb != null && (
+                <div>
+                  <span>Memory grant</span>
+                  <strong>
+                    {digest.memoryGrant.grantedKb.toLocaleString()} KB
+                  </strong>
+                  <small>
+                    Max used{" "}
+                    {digest.memoryGrant.maxUsedKb?.toLocaleString() ?? "—"} KB
+                  </small>
+                </div>
+              )}
+            </div>
+          )}
+          {digest.parameters?.some((p) => p.differs) && (
+            <p className="notice">
+              Compiled for different parameter values than it ran with:{" "}
+              {digest.parameters
+                .filter((p) => p.differs)
+                .map(
+                  (p) => `${p.name} compiled ${p.compiled}, ran ${p.runtime}`,
+                )
+                .join(" · ")}
+            </p>
+          )}
           {digest.earlyAbort && (
             <p className="notice">
               Optimization ended early: <strong>{digest.earlyAbort}</strong>
@@ -194,9 +232,15 @@ export function AnalysisResults({
                 <thead>
                   <tr>
                     <th>Operator</th>
-                    <th>Estimated rows</th>
+                    <th>Estimated rows per execution</th>
                     <th>Actual rows</th>
-                    <th>Estimated cost</th>
+                    <th>
+                      {digest.costBasis === "operator"
+                        ? "Estimated operator cost"
+                        : "Estimated subtree cost"}
+                    </th>
+                    {digest.actual && <th>Own time (ms)</th>}
+                    {digest.actual && <th>Logical reads</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -204,13 +248,26 @@ export function AnalysisResults({
                     <tr key={`${o.id}-${i}`}>
                       <td>
                         {o.op}
-                        <small>Node {o.id}</small>
+                        {o.lookup ? " (lookup)" : ""}
+                        <small>
+                          Node {o.id}
+                          {o.object ? ` · ${o.object}` : ""}
+                        </small>
                       </td>
                       <td>{o.estRows.toLocaleString()}</td>
                       <td>
                         {o.actualRows?.toLocaleString() ?? "Not recorded"}
+                        {o.execs != null && o.execs > 1 && (
+                          <small>{o.execs.toLocaleString()} executions</small>
+                        )}
                       </td>
                       <td>{o.cost.toLocaleString()}</td>
+                      {digest.actual && (
+                        <td>{o.actualElapsedMs?.toLocaleString() ?? "—"}</td>
+                      )}
+                      {digest.actual && (
+                        <td>{o.logicalReads?.toLocaleString() ?? "—"}</td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
