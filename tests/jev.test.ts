@@ -496,3 +496,15 @@ test("uncertainty about effort alone does not block an option; uncertainty about
   );
   assert.equal(w.headline, null);
 });
+
+test("an empty option list is refused clearly, and 'nothing to fix' is a finished result", async () => {
+  await assert.rejects(
+    () => judgeCandidates(digest, [], fakeJev(GOOD)),
+    /no options for Jev/,
+  );
+  const { nothingToFix } = await import("../lib/jev.ts");
+  const v = nothingToFix("No performance problem in this plan.");
+  assert.equal(v.headline, null);
+  assert.deepEqual(v.flags, ["nothing_to_fix"]);
+  assert.equal(v.reason, "No performance problem in this plan.");
+});

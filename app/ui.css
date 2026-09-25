@@ -1856,6 +1856,14 @@ a.model-badge:hover {
     linear-gradient(var(--qai-paper), var(--qai-paper)) padding-box,
     linear-gradient(120deg, var(--qai-warn), color-mix(in srgb, var(--qai-warn) 40%, var(--qai-rule))) border-box;
 }
+.decision-hero.healthy {
+  background:
+    linear-gradient(var(--qai-paper), var(--qai-paper)) padding-box,
+    linear-gradient(120deg, var(--qai-teal), color-mix(in srgb, var(--qai-teal) 35%, var(--qai-rule))) border-box;
+}
+.healthy .decision-eyebrow {
+  color: var(--qai-teal);
+}
 .decision-hero.unavailable {
   background:
     linear-gradient(var(--qai-paper), var(--qai-paper)) padding-box,

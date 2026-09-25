@@ -58,6 +58,8 @@ export type Verdict = {
   version?: number;
   jev_pick: string | null;
   jev_confidence: number;
+  /** Why no change is recommended, when the analyst found nothing to fix. */
+  reason?: string;
   /** Jev's probability for each choice, including no_suitable_action: how clear-cut the decision was. */
   jev_probabilities?: Record<string, number>;
   agrees: boolean;
@@ -235,6 +237,8 @@ export async function judgeCandidates(
   /** The DBA's own note: constraints Jev must weigh, e.g. "no schema changes this week". */
   constraints = "",
 ): Promise<Verdict> {
+  if (!candidates.length)
+    throw new Error("There are no options for Jev to judge.");
   const rules = candidates.map(ruleDims);
   const context: Record<string, string> = constraints.trim()
     ? { constraints: constraints.slice(0, 2000) }
@@ -417,5 +421,23 @@ export function jevFallback(candidates: Candidate[], why: string): Verdict {
     anything_worth_running: 0,
     weights: WEIGHTS,
     flags: ["jev_unavailable", why.slice(0, 200)],
+  };
+}
+
+// The analyst found nothing worth changing (a healthy plan). Recorded as a finished result, not an error.
+export function nothingToFix(reason: string): Verdict {
+  return {
+    version: 2,
+    status: "abstained",
+    order: [],
+    source: "none",
+    headline: null,
+    jev_pick: null,
+    jev_confidence: 0,
+    agrees: false,
+    anything_worth_running: 0,
+    weights: WEIGHTS,
+    flags: ["nothing_to_fix"],
+    reason: reason.slice(0, 1000),
   };
 }

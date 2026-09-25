@@ -262,7 +262,10 @@ test("deep nesting parses in linear time (namespace processing made it quadratic
   const t = performance.now();
   const [d] = parsePlanText(xml);
   assert.equal(d.operatorCount, depth);
-  assert.ok(performance.now() - t < 3000, `took ${Math.round(performance.now() - t)} ms`);
+  assert.ok(
+    performance.now() - t < 3000,
+    `took ${Math.round(performance.now() - t)} ms`,
+  );
 });
 test("namespace prefixes on elements and attributes are ignored", () => {
   const [d] = parsePlanText(
@@ -271,4 +274,39 @@ test("namespace prefixes on elements and attributes are ignored", () => {
   assert.equal(d.sql, "SELECT 1");
   assert.equal(d.subtreeCost, 2);
   assert.equal(d.topOperators[0].op, "Sort");
+});
+
+test("plans from other databases are named instead of 'XML stopped parsing'", () => {
+  const cases: [string, RegExp][] = [
+    [
+      '[{"Plan":{"Node Type":"Seq Scan","Relation Name":"orders"}}]',
+      /PostgreSQL EXPLAIN \(FORMAT JSON\)/,
+    ],
+    [
+      "Seq Scan on orders  (cost=0.00..431.00 rows=10000 width=244)",
+      /PostgreSQL EXPLAIN text/,
+    ],
+    [
+      '<explain xmlns="http://www.postgresql.org/2009/explain"><Query/></explain>',
+      /PostgreSQL EXPLAIN \(FORMAT XML\)/,
+    ],
+    ['{"query_block":{"select_id":1}}', /MySQL EXPLAIN FORMAT=JSON/],
+    [
+      "-> Table scan on orders  (cost=101.25 rows=1000)",
+      /MySQL EXPLAIN \(tree/,
+    ],
+    ["Plan hash value: 1234567\n| Id  | Operation |", /Oracle/],
+    [
+      "  |--Clustered Index Scan(OBJECT:([db].[dbo].[T].[PK]))",
+      /SQL Server text plan/,
+    ],
+    ["SELECT * FROM dbo.Orders", /SQL text, not an execution plan/],
+  ];
+  for (const [input, message] of cases)
+    assert.throws(
+      () => parsePlanText(input),
+      (e: unknown) =>
+        e instanceof PlanError && message.test((e as Error).message),
+      input,
+    );
 });

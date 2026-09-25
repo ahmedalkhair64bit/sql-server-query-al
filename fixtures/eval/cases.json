@@ -209,6 +209,51 @@
         "index",
         "rewrite"
       ]
+    },
+    {
+      "file": "blocked-select.sqlplan",
+      "description": "A covering-index seek returning 12 rows waited 20.9 s on LCK_M_S: a writer in another session held the lock. The plan is already optimal.",
+      "expect_findings": [
+        "wait_blocking"
+      ],
+      "correct_fix_types": [
+        "ops"
+      ]
+    },
+    {
+      "file": "orm-parameterization.sqlplan",
+      "description": "An ORM sends the email as nvarchar(4000) against a varchar(256) indexed column: the column is converted, so IX_Customers_Email is scanned (3.2 million rows) instead of sought.",
+      "expect_findings": [
+        "implicit_conversion",
+        "residual_predicate"
+      ],
+      "correct_fix_types": [
+        "app",
+        "rewrite"
+      ]
+    },
+    {
+      "file": "failed-timeout.sqlplan",
+      "description": "Cancelled by a 30 s client timeout: the scan of 240 million Events had read 96 million rows looking for one customer when it stopped. The plan is partial.",
+      "expect_findings": [
+        "incomplete_execution",
+        "residual_predicate"
+      ],
+      "correct_fix_types": [
+        "index"
+      ]
+    },
+    {
+      "file": "insert-archive.sqlplan",
+      "description": "Archiving 4.8 million orders in one INSERT ... SELECT: 96 s, 41 s waiting on WRITELOG, a sort that spills to maintain three nonclustered indexes on the target.",
+      "expect_findings": [
+        "wait_log",
+        "tempdb_spill"
+      ],
+      "correct_fix_types": [
+        "rewrite",
+        "ops"
+      ]
     }
   ]
 }

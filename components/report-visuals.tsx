@@ -168,11 +168,14 @@ export function JevDecision({
     ),
   ).length;
   const reasons = verdict.flags.map((f) => FLAG_TEXT[f]).filter(Boolean);
+  const healthy = verdict.flags.includes("nothing_to_fix");
   const state = selected
     ? "chosen"
-    : verdict.status === "unavailable"
-      ? "unavailable"
-      : "abstained";
+    : healthy
+      ? "healthy"
+      : verdict.status === "unavailable"
+        ? "unavailable"
+        : "abstained";
   return (
     <section className={`decision-hero ${state}`} data-verdict>
       <div className="decision-main">
@@ -180,15 +183,19 @@ export function JevDecision({
           <span className="eyebrow-dot" aria-hidden="true" />
           {selected
             ? "Jev's recommended first action"
-            : state === "unavailable"
-              ? "Jev did not answer"
-              : "Jev declined to pick an action"}
+            : state === "healthy"
+              ? "No action needed"
+              : state === "unavailable"
+                ? "Jev did not answer"
+                : "Jev declined to pick an action"}
         </p>
         <h2>
           {selected?.title ??
-            (state === "unavailable"
-              ? "Decision engine unavailable"
-              : "More evidence is needed")}
+            (state === "healthy"
+              ? "No change recommended for this plan"
+              : state === "unavailable"
+                ? "Decision engine unavailable"
+                : "More evidence is needed")}
         </h2>
         <p className="decision-lead">
           {selected ? (
@@ -196,6 +203,9 @@ export function JevDecision({
               <strong>Expected effect: </strong>
               {selected.expected}
             </>
+          ) : state === "healthy" ? (
+            (verdict.reason ??
+            "The analyst found no performance problem worth changing.")
           ) : (
             (reasons[0] ??
             "The alternatives below are not approved recommendations. Review the evidence, add context, or retry Jev.")
@@ -219,7 +229,7 @@ export function JevDecision({
           </ul>
         )}
         <div className="decision-actions no-print">
-          {onRetry && (
+          {onRetry && !healthy && (
             <button className="btn" onClick={onRetry} disabled={busy}>
               {busy ? "Jev is reviewing…" : "Retry Jev"}
             </button>
