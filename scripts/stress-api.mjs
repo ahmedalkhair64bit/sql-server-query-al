@@ -140,7 +140,19 @@ const upload = async (body, name = "stress.sqlplan") => {
     },
     body,
     duplex: "half",
+  }).catch((e) => {
+    // A refused upload (429) is answered before its body is read, so the client may instead see the
+    // socket close mid-write. That is still a refusal; anything else is a real failure.
+    if (
+      /EPIPE|ECONNRESET|other side closed/.test(
+        String(e.cause?.code ?? e.cause?.message ?? e),
+      )
+    )
+      return null;
+    throw e;
   });
+  if (!r)
+    return { status: 429, data: { error: "connection closed while refused" } };
   return { status: r.status, data: await r.json() };
 };
 // Runs one analysis and reads the event stream to the end.

@@ -279,6 +279,8 @@ tests/         Unit tests
 tests-e2e/     Playwright browser tests
 ```
 
+The interface follows the locked design system in [`design.md`](design.md): OKLCH tokens in `app/tokens.css`, Space Grotesk, Inter and JetBrains Mono, all self-hosted.
+
 Built with Next.js, React, SQLite, a streaming XML parser, and the TypeSafe SDK.
 
 ### Measuring recommendation quality
