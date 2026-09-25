@@ -121,7 +121,9 @@ function rank(
     (s, k) => s + WEIGHTS[k] * dims[k].value,
     0,
   );
-  const confs = Object.values(dims)
+  // Only doubt about fit or safety blocks an option. Measured on the real Jev, uncertainty about *effort*
+  // (how easy an application change is) vetoed a safe, well-supported fix; it is now shown, not blocking.
+  const confs = [dims.bottleneck_fit, dims.semantic_safety]
     .map((d) => d.confidence)
     .filter((x): x is number => x !== null);
   const flags: string[] = [];
@@ -136,6 +138,8 @@ function rank(
     flags.push("verify_semantics");
   if (confs.length && Math.min(...confs) < CONFIDENCE_FLOOR)
     flags.push("low_confidence");
+  if (dims.ease.confidence !== null && dims.ease.confidence < CONFIDENCE_FLOOR)
+    flags.push("effort_uncertain");
   if (c.actions.some((x) => x.requires_change_control))
     flags.push("change_control");
   if (c.rejected_reasons?.length) flags.push("invalid_evidence");

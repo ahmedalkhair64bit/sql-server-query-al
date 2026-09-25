@@ -310,6 +310,7 @@ export function AnalysisResults({
                         "invalid_evidence",
                         "low_confidence",
                         "jev_failed",
+                        "effort_uncertain",
                       ].includes(f),
                     )
                     .map((f) => (
@@ -328,6 +329,8 @@ export function AnalysisResults({
                                 "The assessment is uncertain; gather more evidence.",
                               jev_failed:
                                 "Jev could not review this option; retry Jev to include it.",
+                              effort_uncertain:
+                                "Jev was unsure how much effort this takes in your environment; check the prerequisites.",
                             } as Record<string, string>
                           )[f]
                         }

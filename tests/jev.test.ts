@@ -455,3 +455,44 @@ test("the DBA's constraints reach every Jev question, and the choice probabiliti
     assert.equal(s.constraints, "No schema changes until Friday.");
   assert.deepEqual(v.jev_probabilities, { a: 0.82, b: 0.18 });
 });
+
+test("uncertainty about effort alone does not block an option; uncertainty about fit does", async () => {
+  const unsureEase = {
+    ...scored(4, 4, 2, 0.9),
+    ease: {
+      type: "score",
+      score: 2,
+      confidence: 0.1,
+      legend: {},
+      probabilities: {},
+    },
+  };
+  const v = await judgeCandidates(
+    digest,
+    [{ ...candidates[0], option_type: "app", sql_to_run: null }, candidates[1]],
+    fakeJev({ ...GOOD, byKey: { a: unsureEase, b: GOOD.byKey.b } }),
+  );
+  const a = v.order.find((r) => r.key === "a")!;
+  assert.ok(a.flags.includes("effort_uncertain"));
+  assert.ok(!a.flags.includes("low_confidence"));
+  assert.equal(v.headline, "a");
+  const unsureFit = {
+    ...scored(4, 4, 2, 0.9),
+    bottleneck_fit: {
+      type: "score",
+      score: 4,
+      confidence: 0.1,
+      legend: {},
+      probabilities: {},
+    },
+  };
+  const w = await judgeCandidates(
+    digest,
+    [{ ...candidates[0], option_type: "app", sql_to_run: null }, candidates[1]],
+    fakeJev({ ...GOOD, byKey: { a: unsureFit, b: GOOD.byKey.b } }),
+  );
+  assert.ok(
+    w.order.find((r) => r.key === "a")!.flags.includes("low_confidence"),
+  );
+  assert.equal(w.headline, null);
+});

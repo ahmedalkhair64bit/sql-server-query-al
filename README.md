@@ -278,4 +278,6 @@ ANALYST_BASE_URL=https://api.example.com/v1 ANALYST_API_KEY=... ANALYST_MODEL=..
 JEV_API_KEY=... npm run eval:plans
 ```
 
-It reports how often Jev picks a correct fix type, and declines on the healthy plan. Add your own anonymized plans to `fixtures/eval/private/` (gitignored) with a `cases.json` in the same shape. `npm run eval:plans -- --outcomes data/qai.db` reports real outcomes from saved before/after comparisons.
+It reports how often Jev picks a correct fix type, and declines on the healthy plan.
+
+To test Jev on its own, without an analyst key, `JEV_API_KEY=... npm run eval:jev` gives the real Jev a fixed set of options per plan: one correct fix, a plausible decoy, and sometimes a risky option such as NOLOCK or a rewrite that changes results. Measured on 2026-09-25 with `jev-latest`: correct on 16 of 17 plans. It declined on the healthy plan, picked "find the blocker" over an index on the blocking plan, and flagged every risky option. The one miss (parallel skew) was a decline: Jev judged the "investigate the skew" option as not well supported by the evidence. Add your own anonymized plans to `fixtures/eval/private/` (gitignored) with a `cases.json` in the same shape. `npm run eval:plans -- --outcomes data/qai.db` reports real outcomes from saved before/after comparisons.

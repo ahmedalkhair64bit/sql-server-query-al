@@ -316,3 +316,12 @@ test("the suggested statement is the one that ran longest, not the costliest est
   });
   assert.equal(r.recommended, "s2");
 });
+
+test("columns named only inside a predicate count as referenced", () => {
+  const p = load("non-sargable.sqlplan");
+  const r = checkCandidateSql(
+    { option_type: "index", sql_to_run: "CREATE INDEX IX_Orders_OrderDate_2 ON dbo.Orders (OrderDate) INCLUDE (OrderId);" },
+    p,
+  );
+  assert.ok(!r.errors.some((e) => /never references/.test(e)), r.errors.join(" "));
+});

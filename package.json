@@ -13,6 +13,7 @@
     "e2e:live": "QAI_LIVE=1 playwright test --project=chromium tests-e2e/analysis.spec.ts",
     "benchmark:plans": "node scripts/benchmark-plans.mjs",
     "eval:plans": "node --no-warnings scripts/eval-plans.mjs",
+    "eval:jev": "node --no-warnings scripts/eval-jev.mjs",
     "stress:parser": "node --no-warnings scripts/stress-parser.mjs",
     "stress:api": "node --no-warnings scripts/stress-api.mjs"
   },
