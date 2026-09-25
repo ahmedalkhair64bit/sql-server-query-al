@@ -98,8 +98,14 @@ export function extractJson(text: string): unknown {
   const s = (fenced ? fenced[1] : text).trim();
   const start = s.indexOf("{");
   const end = s.lastIndexOf("}");
-  if (start === -1 || end <= start)
+  if (start === -1)
     throw new AnalystError("The analyst model returned prose instead of JSON.");
+  // An opening brace with no closing one is a response cut off at its length limit, not prose.
+  if (end <= start)
+    throw new AnalystError(
+      `The analyst model's JSON stopped after ${s.length} characters without closing. ` +
+        `Raise the maximum response length in Settings.`,
+    );
   try {
     return JSON.parse(s.slice(start, end + 1));
   } catch {
@@ -108,7 +114,7 @@ export function extractJson(text: string): unknown {
     // through the extra-params field (which overrides max_tokens).
     throw new AnalystError(
       `The analyst model's JSON stopped after ${s.length} characters without closing. ` +
-        `Raise the ceiling in settings extra params, e.g. {"max_tokens":8192}.`,
+        `Raise the maximum response length in Settings.`,
     );
   }
 }

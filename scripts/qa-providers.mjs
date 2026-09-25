@@ -31,6 +31,25 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify({ choices: [{ message: { content: "OK" } }] }));
       return;
     }
+    // Fault injection for the stress test: the user's note selects how the "provider" misbehaves.
+    const fault = /qa-fault:([\w-]+)/.exec(data.user_note ?? "")?.[1];
+    if (fault === "analyst-500") {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: { message: "upstream exploded" } }));
+      return;
+    }
+    if (fault === "analyst-garbage") {
+      res.end(JSON.stringify({ choices: [{ message: { content: "I think you should add an index." } }] }));
+      return;
+    }
+    if (fault === "analyst-truncated") {
+      res.end(JSON.stringify({ choices: [{ message: { content: '{"candidates":[{"key":"idx","title":"Cov' } }] }));
+      return;
+    }
+    if (fault === "analyst-one-option") {
+      res.end(JSON.stringify({ choices: [{ message: { content: '{"candidates":[],"insufficient_evidence":"Need an actual plan."}' } }] }));
+      return;
+    }
     const ids = data.digest.evidence.map((e) => e.id);
     const options = [
       {
@@ -99,6 +118,13 @@ const server = createServer(async (req, res) => {
     return;
   }
   if (req.url === "/v1/systemone") {
+    const jevFault = /qa-fault:([\w-]+)/.exec(body.state?.constraints ?? "")?.[1];
+    if (jevFault === "jev-500") {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: { message: "jev down" } }));
+      return;
+    }
+    if (jevFault === "jev-slow") await new Promise((r) => setTimeout(r, 25_000));
     if (req.headers.authorization === "Bearer qa-bad-key") {
       res.statusCode = 401;
       res.end(JSON.stringify({ error: { message: "Invalid API key." } }));

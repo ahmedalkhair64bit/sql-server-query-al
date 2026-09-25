@@ -66,8 +66,15 @@ export type Verdict = {
   flags: string[];
 };
 
+// A hung Jev used to cost 60 s (20 s timeout, retried twice). Timeouts are not retried: a Jev that did not
+// answer in 20 s rarely answers on the next try, and the report says so instead. HTTP 429/5xx still retry.
 export const makeJevClient = (apiKey: string, model = "jev-latest") =>
-  new TypeSafeClient({ apiKey, defaultModel: model, timeout: 20_000 });
+  new TypeSafeClient({
+    apiKey,
+    defaultModel: model,
+    timeout: 20_000,
+    retry: { apiTimeoutError: false },
+  });
 
 const norm = (s: number, levels: number) =>
   Math.max(0, Math.min(1, s / (levels - 1)));

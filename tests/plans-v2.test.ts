@@ -251,3 +251,24 @@ test("a digest stored by the previous version still yields the same evidence IDs
   const ids = digestForModel(legacy as never).evidence.map((e) => e.id);
   for (const e of legacy.evidence) assert.ok(ids.includes(e.id), e.id);
 });
+
+test("deep nesting parses in linear time (namespace processing made it quadratic)", () => {
+  const relop = (i: number) =>
+    `<RelOp NodeId="${i}" PhysicalOp="Nested Loops" EstimateRows="1" EstimatedTotalSubtreeCost="1"><NestedLoops>`;
+  const depth = 9000; // 18,000 tags: RelOp plus NestedLoops, inside the 20,000-tag limit
+  const xml = wrap(
+    `<StmtSimple StatementText="q"><QueryPlan>${Array.from({ length: depth }, (_, i) => relop(i)).join("")}${"</NestedLoops></RelOp>".repeat(depth)}</QueryPlan></StmtSimple>`,
+  );
+  const t = performance.now();
+  const [d] = parsePlanText(xml);
+  assert.equal(d.operatorCount, depth);
+  assert.ok(performance.now() - t < 3000, `took ${Math.round(performance.now() - t)} ms`);
+});
+test("namespace prefixes on elements and attributes are ignored", () => {
+  const [d] = parsePlanText(
+    `<sp:ShowPlanXML xmlns:sp="http://schemas.microsoft.com/sqlserver/2004/07/showplan"><sp:BatchSequence><sp:Batch><sp:Statements><sp:StmtSimple sp:StatementText="SELECT 1" StatementSubTreeCost="2"><sp:QueryPlan><sp:RelOp NodeId="0" PhysicalOp="Sort" EstimateRows="1" EstimatedTotalSubtreeCost="2"/></sp:QueryPlan></sp:StmtSimple></sp:Statements></sp:Batch></sp:BatchSequence></sp:ShowPlanXML>`,
+  );
+  assert.equal(d.sql, "SELECT 1");
+  assert.equal(d.subtreeCost, 2);
+  assert.equal(d.topOperators[0].op, "Sort");
+});

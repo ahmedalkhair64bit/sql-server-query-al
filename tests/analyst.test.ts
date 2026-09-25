@@ -310,3 +310,17 @@ test("single-paragraph guidance is normalized without losing content", async () 
   ]);
   assert.deepEqual(got[0].validation, ["Compare results and logical reads."]);
 });
+
+test("a cut-off JSON answer is reported as cut off, not as prose", async () => {
+  const { extractJson, AnalystError } = await import("../lib/analyst.ts");
+  assert.throws(
+    () => extractJson('{"candidates":[{"key":"idx","title":"Cov'),
+    (e: unknown) =>
+      e instanceof AnalystError &&
+      /stopped after \d+ characters/.test((e as Error).message),
+  );
+  assert.throws(
+    () => extractJson("I would add an index."),
+    /prose instead of JSON/,
+  );
+});
