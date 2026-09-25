@@ -7,6 +7,7 @@ import {
 } from "../lib/plan-parser.mjs";
 import { decodeBytes, createDecoder } from "../lib/plan-decoder.mjs";
 import { digestForModel } from "../lib/digest.ts";
+import { readFileSync } from "node:fs";
 const wrap = (inner: string) =>
   `<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan"><BatchSequence><Batch><Statements>${inner}</Statements></Batch></BatchSequence></ShowPlanXML>`;
 const stmt = (id: number, inner: string, cost = 1) =>
@@ -35,7 +36,10 @@ test("batch statements and nested operators retain their own evidence", () => {
   assert.equal(b.subtreeCost, 22);
   assert.equal(a.rowGuessErrors[0].ratio, null);
   assert.equal(a.rowGuessErrors[0].zeroMismatch, true);
-  assert.notEqual(a.evidence[0].id, b.evidence[0].id);
+  assert.notEqual(
+    digestForModel(a).evidence[0].id,
+    digestForModel(b).evidence[0].id,
+  );
 });
 test("nested statements do not inherit child statement operators", () => {
   const parsed = parsePlanText(
@@ -103,4 +107,149 @@ test("large SQL has explicit omissions and cannot be rewritten", () => {
   assert.ok(d.sql.length <= 64000);
   assert.equal(digestForModel(d).sql_truncated, true);
   assert.ok(digestForModel(d).coverage.length);
+});
+
+// ---- a nested actual plan shaped like an SSMS export: Sort > Nested Loops > (Index Seek, Key Lookup x50,000) ----
+const nested = () =>
+  parsePlanText(readFileSync("fixtures/nested-actual.sqlplan", "utf8"))[0];
+test("operator cost is the operator's own, not its subtree", () => {
+  const d = nested();
+  const byId = Object.fromEntries(
+    d.topOperators.map((o: { id: string }) => [o.id, o]),
+  );
+  // Subtree costs are 12.3 / 12.28 / 0.0032 / 12.27: the Sort and Nested Loops add almost nothing.
+  assert.equal(byId["0"].cost, 0.02);
+  assert.equal(byId["1"].cost, 0.0068);
+  assert.equal(byId["3"].cost, 12.27);
+  assert.equal(byId["3"].subtreeCost, 12.27);
+});
+test("an actual plan ranks operators by their own measured time", () => {
+  const d = nested();
+  assert.equal(d.topOperators[0].op, "Key Lookup");
+  assert.equal(d.topOperators[0].actualElapsedMs, 3900);
+  assert.equal(d.topOperators[0].logicalReads, 160000);
+  // Row mode reports time including children: the Sort's own time is 4100 - 4050.
+  const sort = d.topOperators.find((o: { id: string }) => o.id === "0");
+  assert.equal(sort.actualElapsedMs, 50);
+});
+test("row estimates compare per execution, so nested-loop inner sides are not false misses", () => {
+  const d = nested();
+  const ids = d.rowGuessErrors.map((r: { id: string }) => r.id);
+  // Key Lookup: estimate 1 per execution, 50,000 rows over 50,000 executions — accurate.
+  assert.ok(!ids.includes("3"), JSON.stringify(d.rowGuessErrors));
+  // The seek really expected 1 row and read 50,000: that is the genuine miss.
+  const seek = d.rowGuessErrors.find((r: { id: string }) => r.id === "2");
+  assert.equal(seek.est, 1);
+  assert.equal(seek.actual, 50000);
+  assert.equal(seek.ratio, 50000);
+});
+test("runtime, memory, parameter, statistics and index evidence is extracted", () => {
+  const d = nested();
+  assert.deepEqual(d.queryTime, { cpuMs: 3900, elapsedMs: 4100 });
+  assert.equal(d.memoryGrant.grantedKb, 900000);
+  assert.equal(d.memoryGrant.maxUsedKb, 2048);
+  assert.deepEqual(d.parameters, [
+    { name: "@c", compiled: "(42)", runtime: "(7)", differs: true },
+  ]);
+  assert.equal(d.statistics[0].modifications, 880000);
+  assert.equal(d.statistics[0].samplingPercent, 0.4);
+  assert.deepEqual(
+    d.indexes.map((i: { index: string }) => i.index),
+    ["IX_Orders_Customer", "PK_Orders"],
+  );
+  assert.equal(d.ceVersion, 160);
+  assert.equal(d.queryHash, "0xAA");
+  const seek = d.topOperators.find((o: { id: string }) => o.id === "2");
+  assert.deepEqual(seek.seekColumns, ["CustomerId"]);
+  assert.equal(seek.object, "db.Sales.Orders.IX_Orders_Customer");
+  const lookup = d.topOperators.find((o: { id: string }) => o.id === "3");
+  assert.equal(lookup.lookup, true);
+  assert.match(lookup.predicate, /\[Total\]>\(500\)/);
+});
+test("operator warnings name their operator; statement warnings do not", () => {
+  const d = nested();
+  assert.ok(
+    d.warnings.some((w: string) =>
+      w.startsWith("PlanAffectingConvert ConvertIssue=Seek Plan"),
+    ),
+    JSON.stringify(d.warnings),
+  );
+  assert.ok(
+    d.warnings.includes("ColumnsWithNoStatistics column=db.Sales.Orders.Total"),
+    JSON.stringify(d.warnings),
+  );
+  assert.ok(
+    d.warnings.includes("Node 3 Key Lookup: ColumnsWithNoStatistics"),
+    JSON.stringify(d.warnings),
+  );
+});
+test("each fact is stored and sent once", () => {
+  const d = nested();
+  assert.equal(d.evidence, undefined, "evidence is derived, not stored");
+  const m = digestForModel(d) as Record<string, unknown> & {
+    evidence: { id: string; kind: string }[];
+  };
+  for (const k of [
+    "topOperators",
+    "rowGuessErrors",
+    "missingIndexes",
+    "warnings",
+  ])
+    assert.equal(m[k], undefined, `${k} duplicated beside evidence`);
+  const kinds = new Set(m.evidence.map((e) => e.kind));
+  for (const k of [
+    "statement",
+    "query_time",
+    "memory_grant",
+    "operator",
+    "parameter",
+    "missing_index",
+    "warning",
+    "indexes_used",
+    "statistics",
+  ])
+    assert.ok(kinds.has(k), `missing evidence kind ${k}`);
+  assert.equal(new Set(m.evidence.map((e) => e.id)).size, m.evidence.length);
+  // The Index Seek's estimate miss rides on its operator evidence instead of a second row_error entry.
+  assert.ok(!m.evidence.some((e) => e.kind === "row_error"));
+});
+test("a digest stored by the previous version still yields the same evidence IDs", () => {
+  const legacy = {
+    version: 2,
+    statementId: "s1",
+    sql: "SELECT 1",
+    bytes: 1,
+    subtreeCost: 1,
+    parallel: false,
+    nonParallelReason: null,
+    earlyAbort: null,
+    tables: [],
+    topOperators: [
+      {
+        id: "4",
+        op: "Sort",
+        cost: 1,
+        estRows: 1,
+        actualRows: null,
+        execs: null,
+        parallel: false,
+      },
+    ],
+    rowGuessErrors: [],
+    missingIndexes: [
+      { table: "t", equality: ["a"], inequality: [], included: [], impact: 50 },
+    ],
+    warnings: ["NoJoinPredicate"],
+    waits: [],
+    evidence: [
+      { id: "s1:statement" },
+      { id: "s1:operator:4" },
+      { id: "s1:index:0" },
+      { id: "s1:warning:0" },
+    ],
+  };
+  assert.deepEqual(
+    digestForModel(legacy as never).evidence.map((e) => e.id),
+    legacy.evidence.map((e) => e.id),
+  );
 });

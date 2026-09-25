@@ -54,8 +54,14 @@ test("digests what matters in a showplan", () => {
     included: ["Id"],
     impact: 94.17,
   });
-  assert.ok(d.warnings.includes("NoJoinPredicate"));
-  assert.ok(d.warnings.some((w) => w.startsWith("SpillToTempDb")));
+  assert.ok(
+    d.warnings.includes("Node 0 Clustered Index Scan: NoJoinPredicate"),
+  );
+  assert.ok(
+    d.warnings.some((w) =>
+      w.startsWith("Node 0 Clustered Index Scan: SpillToTempDb"),
+    ),
+  );
   assert.deepEqual(d.waits, [{ type: "PAGEIOLATCH_SH", ms: 812 }]);
   assert.ok((d.rowGuessErrors[0].ratio ?? 0) > 100);
   assert.equal(d.bytes, PLAN.length);
@@ -76,11 +82,9 @@ test("digestForModel stays bounded on a fat plan", () => {
         `<RelOp NodeId="${i}" LogicalOp="Scan" EstimateRows="1" EstimatedTotalSubtreeCost="${i}"/>`,
     ).join("") +
     `</StmtSimple></Statements></Batch></ShowPlanXML>`;
-  const v = digestForModel(digestPlan(big)) as {
-    topOperators: unknown[];
-    tables: unknown[];
-  };
-  assert.ok(v.topOperators.length <= 12);
+  const v = digestForModel(digestPlan(big));
+  assert.ok(v.evidence.filter((e) => e.kind === "operator").length <= 12);
+  assert.ok(JSON.stringify(v).length <= 48000);
 });
 test("a real .sqlplan digests", () => {
   let xml: string;

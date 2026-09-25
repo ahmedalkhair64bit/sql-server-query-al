@@ -1,6 +1,5 @@
 import { requireUser } from "@/lib/auth";
 import { analystConfig, jevKey, jevModel } from "@/lib/settings";
-import { digestForModel } from "@/lib/digest";
 import { proposeCandidates } from "@/lib/analyst";
 import { judgeCandidates, jevFallback, makeJevClient } from "@/lib/jev";
 import { sse } from "@/lib/stream";
@@ -94,7 +93,8 @@ export async function POST(req: Request) {
         try {
           send("created", { id });
           send("stage", { stage: "digesting" });
-          send("digest", digestForModel(digest));
+          // The page renders the stored digest (operators, warnings); the model gets digestForModel.
+          send("digest", digest);
           send("stage", { stage: "proposing" });
           const candidates = await proposeCandidates(
             analyst,

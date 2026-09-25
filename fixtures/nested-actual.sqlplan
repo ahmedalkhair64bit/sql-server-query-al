@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan" Version="1.564" Build="16.0.4085.2">
+<BatchSequence><Batch><Statements>
+<StmtSimple StatementText="SELECT o.Id, o.Total FROM Sales.Orders o WHERE o.CustomerId = @c" StatementId="1" StatementSubTreeCost="12.3" StatementType="SELECT" CardinalityEstimationModelVersion="160" QueryHash="0xAA" QueryPlanHash="0xBB">
+<QueryPlan DegreeOfParallelism="1" CachedPlanSize="40">
+ <Warnings><PlanAffectingConvert ConvertIssue="Seek Plan" Expression="CONVERT_IMPLICIT(nvarchar(20),[o].[Code],0)=[@code]"/></Warnings>
+ <MemoryGrantInfo SerialRequiredMemory="1024" SerialDesiredMemory="900000" GrantedMemory="900000" MaxUsedMemory="2048"/>
+ <OptimizerStatsUsage><StatisticsInfo Database="[db]" Schema="[Sales]" Table="[Orders]" Statistics="[IX_Orders_Customer]" ModificationCount="880000" SamplingPercent="0.4" LastUpdate="2025-01-03T02:00:00"/></OptimizerStatsUsage>
+ <QueryTimeStats CpuTime="3900" ElapsedTime="4100"/>
+ <MissingIndexes><MissingIndexGroup Impact="92.1"><MissingIndex Database="[db]" Schema="[Sales]" Table="[Orders]">
+   <ColumnGroup Usage="EQUALITY"><Column Name="[CustomerId]" ColumnId="2"/></ColumnGroup>
+   <ColumnGroup Usage="INCLUDE"><Column Name="[Total]" ColumnId="5"/></ColumnGroup></MissingIndex></MissingIndexGroup></MissingIndexes>
+ <RelOp NodeId="0" PhysicalOp="Sort" LogicalOp="Sort" EstimateRows="1" EstimateIO="0.01" EstimateCPU="0.01" EstimatedTotalSubtreeCost="12.3" Parallel="0" EstimateRebinds="0" EstimateRewinds="0">
+  <RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="50000" ActualExecutions="1" ActualElapsedms="4100" ActualCPUms="30"/></RunTimeInformation>
+  <Sort Distinct="0">
+   <RelOp NodeId="1" PhysicalOp="Nested Loops" LogicalOp="Inner Join" EstimateRows="1" EstimateIO="0" EstimateCPU="0.0002" EstimatedTotalSubtreeCost="12.28" Parallel="0" EstimateRebinds="0" EstimateRewinds="0">
+    <RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="50000" ActualExecutions="1" ActualElapsedms="4050" ActualCPUms="20"/></RunTimeInformation>
+    <NestedLoops Optimized="0">
+     <RelOp NodeId="2" PhysicalOp="Index Seek" LogicalOp="Index Seek" EstimateRows="1" EstimateIO="0.003" EstimateCPU="0.0001" EstimatedTotalSubtreeCost="0.0032" Parallel="0" EstimateRebinds="0" EstimateRewinds="0">
+      <RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="50000" ActualExecutions="1" ActualLogicalReads="150" ActualElapsedms="40" ActualCPUms="30"/></RunTimeInformation>
+      <IndexScan><Object Database="[db]" Schema="[Sales]" Table="[Orders]" Index="[IX_Orders_Customer]" IndexKind="NonClustered"/>
+       <SeekPredicates><SeekPredicateNew><SeekKeys><Prefix ScanType="EQ"><RangeColumns><ColumnReference Database="[db]" Schema="[Sales]" Table="[Orders]" Alias="[o]" Column="CustomerId"/></RangeColumns><RangeExpressions><ScalarOperator ScalarString="[@c]"/></RangeExpressions></Prefix></SeekKeys></SeekPredicateNew></SeekPredicates></IndexScan>
+     </RelOp>
+     <RelOp NodeId="3" PhysicalOp="Key Lookup" LogicalOp="Key Lookup" EstimateRows="1" EstimateIO="0.003" EstimateCPU="0.0001" EstimatedTotalSubtreeCost="12.27" Parallel="0" EstimateRebinds="49999" EstimateRewinds="0">
+      <RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="50000" ActualExecutions="50000" ActualLogicalReads="160000" ActualElapsedms="3900" ActualCPUms="3800"/></RunTimeInformation>
+      <Warnings><ColumnsWithNoStatistics><ColumnReference Database="[db]" Schema="[Sales]" Table="[Orders]" Column="Total"/></ColumnsWithNoStatistics></Warnings>
+      <IndexScan Lookup="1"><Object Database="[db]" Schema="[Sales]" Table="[Orders]" Index="[PK_Orders]" IndexKind="Clustered"/>
+       <Predicate><ScalarOperator ScalarString="[db].[Sales].[Orders].[Total] as [o].[Total]&gt;(500)"><Compare CompareOp="GT"><ScalarOperator ScalarString="[o].[Total]"/></Compare></ScalarOperator></Predicate></IndexScan>
+     </RelOp>
+    </NestedLoops>
+   </RelOp>
+  </Sort>
+ </RelOp>
+ <ParameterList><ColumnReference Column="@c" ParameterCompiledValue="(42)" ParameterRuntimeValue="(7)"/></ParameterList>
+</QueryPlan></StmtSimple></Statements></Batch></BatchSequence></ShowPlanXML>
