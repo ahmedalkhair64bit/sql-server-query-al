@@ -17,24 +17,18 @@ export default async function Stored({
   const interrupted = a.status === "running";
   const modern = a.digest && JSON.parse(a.digest).version === 2;
   return (
-    <section style={{ display: "grid", gap: "var(--qai-space-xl)" }}>
-      <h1
-        style={{
-          fontFamily: "var(--qai-font-display)",
-          fontSize: "var(--qai-text-2xl)",
-          margin: 0,
-        }}
-      >
+    <section className="report-page">
+      <h1 className="report-title" title={a.title}>
         {a.title}
       </h1>
       {interrupted && (
-        <p role="alert" style={{ color: "var(--qai-warn)" }}>
+        <p role="alert" className="report-alert warn">
           This run was interrupted before it finished — what is below is
           everything it managed to produce.
         </p>
       )}
       {a.error && (
-        <p role="alert" style={{ color: "var(--qai-danger)" }}>
+        <p role="alert" className="report-alert danger">
           {a.error}
         </p>
       )}

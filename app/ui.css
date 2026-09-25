@@ -1230,9 +1230,13 @@ td small {
   display: grid;
   gap: 4px;
   min-width: 0;
+  flex: 1 1 240px;
 }
+/* A percentage width lets a long option title shrink instead of setting the section's minimum width:
+   with max-width alone the select sized the report to 380px on a 375px phone. */
 .compare-controls select {
-  max-width: 100%;
+  width: 100%;
+  min-width: 0;
 }
 .pill[data-verdict="regressed"] {
   color: var(--qai-danger);
@@ -2202,4 +2206,43 @@ a.model-badge:hover {
 .auth-error {
   color: var(--qai-danger);
   margin: 0;
+}
+
+/* ---- saved report page ---- */
+.report-page {
+  display: grid;
+  gap: var(--qai-space-xl);
+  min-width: 0;
+}
+/* Titles come from statement text: a long unbroken generated name (APP_x1_SomeVeryLongEntityName) must wrap,
+   or it widens the page and pushes everything under it off the right edge of a phone. */
+.report-title {
+  margin: 0;
+  font-size: var(--qai-text-2xl);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.report-alert {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid currentColor;
+  border-radius: var(--qai-radius-control);
+  overflow-wrap: anywhere;
+}
+.report-alert.warn {
+  color: var(--qai-warn);
+}
+.report-alert.danger {
+  color: var(--qai-danger);
+}
+.workspace-main :is(h1, h2, h3, p, li, strong, [role="alert"]) {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .report-title {
+    font-size: var(--qai-text-xl);
+  }
 }
