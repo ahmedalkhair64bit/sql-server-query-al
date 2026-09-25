@@ -127,6 +127,18 @@ async function runCase({ dir, c }) {
     row.pickedTitle = picked?.title ?? null;
     row.confidence = verdict.jev_confidence;
     row.flags = verdict.flags;
+    row.detail = verdict.order.map((r) => ({
+      key: r.key,
+      type: candidates.find((x) => x.key === r.key)?.option_type,
+      support: r.evidence_support,
+      opsafe: r.operational_safety,
+      dims: Object.fromEntries(
+        Object.entries(r.dims).map(([k, d]) => [
+          k,
+          `${d.value.toFixed(2)}${d.confidence == null ? "" : ` c${d.confidence.toFixed(2)}`}${d.source ? " rule" : ""}`,
+        ]),
+      ),
+    }));
     row.judged = verdict.order.map(
       (r) =>
         `${r.key}:${r.composite.toFixed(2)}${r.flags.length ? `[${r.flags.join(",")}]` : ""}`,

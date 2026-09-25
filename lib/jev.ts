@@ -166,7 +166,14 @@ export function ruleDims(c: Candidate): {
   semantic_safety?: Scored;
   ease?: Scored;
 } {
-  if (!c.sql_to_run || c.rejected_reasons?.length) return {};
+  if (c.rejected_reasons?.length) return {};
+  // Operations and application options that run no SQL against the query (find the blocker, change the
+  // parameter type the app sends) cannot change the rows it returns. Asking Jev "same rows?" about them
+  // produced confidence as low as 0.05 and blocked correct fixes on real runs; answer it by rule instead.
+  // Options with SQL (ALTER DATABASE ... READ_COMMITTED_SNAPSHOT, a rewrite) are still judged by Jev.
+  if (!c.sql_to_run && (c.option_type === "ops" || c.option_type === "app"))
+    return { semantic_safety: { score: 3, confidence: null, source: "rule" } };
+  if (!c.sql_to_run) return {};
   const ddl = parseDdl(c.sql_to_run);
   const rolledBack = (c.rollback?.length ?? 0) > 0;
   const safety = {

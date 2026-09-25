@@ -217,8 +217,10 @@
         "wait_blocking"
       ],
       "correct_fix_types": [
-        "ops"
-      ]
+        "ops",
+        "app"
+      ],
+      "why": "Finding the blocker (ops) or shortening the blocking writer's transactions (app) both remove the lock wait; the plan itself needs nothing."
     },
     {
       "file": "orm-parameterization.sqlplan",
@@ -229,8 +231,10 @@
       ],
       "correct_fix_types": [
         "app",
-        "rewrite"
-      ]
+        "rewrite",
+        "schema"
+      ],
+      "why": "Send varchar from the ORM (app), cast the parameter (rewrite), or align the column type (schema, heavier): all remove the conversion."
     },
     {
       "file": "failed-timeout.sqlplan",

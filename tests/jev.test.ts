@@ -508,3 +508,30 @@ test("an empty option list is refused clearly, and 'nothing to fix' is a finishe
   assert.deepEqual(v.flags, ["nothing_to_fix"]);
   assert.equal(v.reason, "No performance problem in this plan.");
 });
+
+test("an ops or app option with no SQL is scored safe by rule; one with SQL is still judged", async () => {
+  const { ruleDims } = await import("../lib/jev.ts");
+  const base = { ...candidates[0], rollback: ["x"] };
+  assert.equal(
+    ruleDims({ ...base, option_type: "ops", sql_to_run: null }).semantic_safety
+      ?.source,
+    "rule",
+  );
+  assert.equal(
+    ruleDims({ ...base, option_type: "app", sql_to_run: null }).semantic_safety
+      ?.score,
+    3,
+  );
+  assert.deepEqual(
+    ruleDims({
+      ...base,
+      option_type: "ops",
+      sql_to_run: "ALTER DATABASE Shop SET READ_COMMITTED_SNAPSHOT ON;",
+    }),
+    {},
+  );
+  assert.deepEqual(
+    ruleDims({ ...base, option_type: "rewrite", sql_to_run: "SELECT 1" }),
+    {},
+  );
+});
