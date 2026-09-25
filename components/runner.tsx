@@ -8,6 +8,7 @@ import type { Digest } from "@/lib/digest";
 import type { Verdict } from "@/lib/jev";
 import { AnalysisResults } from "./analysis-results";
 import { Icon } from "./icons";
+import { PipelineProgress } from "./pipeline-progress";
 type Summary = {
   id: string;
   sql: string;
@@ -21,11 +22,6 @@ type Plan = {
   count: number;
   recommended: string;
   statements: Summary[];
-};
-const stages: Record<string, string> = {
-  digesting: "Reading the evidence",
-  proposing: "Your analyst is exploring remedies",
-  judging: "Jev is evaluating the best action",
 };
 export function Runner() {
   const router = useRouter();
@@ -373,21 +369,10 @@ export function Runner() {
         </div>
       </section>
       {stage && (
-        <div className="progress-status" role="status">
-          <span className="spinner" />
-          <div>
-            <strong>
-              {stage === "uploading"
-                ? "Uploading and indexing your plan"
-                : (stages[stage] ?? stage)}
-            </strong>
-            <small>
-              {stage === "uploading"
-                ? "Large plans may take a little longer."
-                : "Your results appear here as they become available."}
-            </small>
-          </div>
-        </div>
+        <PipelineProgress
+          key={stage === "uploading" ? "upload" : "run"}
+          stage={stage}
+        />
       )}
       {error && (
         <div className="notice danger-text" role="alert">

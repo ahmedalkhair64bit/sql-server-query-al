@@ -11,6 +11,12 @@ import { copyText } from "@/lib/clipboard";
 import { detectFindings } from "@/lib/findings.mjs";
 import { buildValidationScript } from "@/lib/validation-pack.mjs";
 import { PlanCompare, type Comparison } from "./plan-compare";
+import {
+  JevDecision,
+  MetricTiles,
+  FindingCards,
+  TimeBars,
+} from "./report-visuals";
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 const labels: Record<string, string> = {
   bottleneck_fit: "Bottleneck fit",
@@ -64,7 +70,28 @@ export function AnalysisResults({
     () => {
       const mm = gsap.matchMedia();
       mm.add("(prefers-reduced-motion: no-preference)", () => {
-        gsap.from(".decision-card", { y: 12, opacity: 0, duration: 0.35 });
+        gsap.from(".decision-hero", {
+          y: 16,
+          opacity: 0,
+          duration: 0.45,
+          ease: "power2.out",
+        });
+        gsap.from(".kpi", {
+          y: 10,
+          opacity: 0,
+          duration: 0.4,
+          stagger: 0.05,
+          delay: 0.1,
+        });
+        ScrollTrigger.batch(".finding-card", {
+          onEnter: (els) =>
+            gsap.fromTo(
+              els,
+              { y: 10, opacity: 0 },
+              { y: 0, opacity: 1, stagger: 0.05, duration: 0.35 },
+            ),
+          once: true,
+        });
         ScrollTrigger.batch(".option-card", {
           onEnter: (els) =>
             gsap.fromTo(
@@ -114,48 +141,12 @@ export function AnalysisResults({
   return (
     <div ref={root} className="results" id="report">
       {verdict && (
-        <section
-          className={`decision-card ${selected ? "chosen" : "abstained"}`}
-          data-verdict
-        >
-          <div className="decision-eyebrow">
-            <Icon name="shield" size={18} />
-            {selected
-              ? "Jev’s recommended first action"
-              : "Jev has not selected an action"}
-          </div>
-          <h2>
-            {selected?.title ??
-              (verdict.status === "unavailable"
-                ? "Decision engine unavailable"
-                : "More evidence is needed")}
-          </h2>
-          <p>
-            {selected && <strong>Expected effect: </strong>}
-            {selected?.expected ??
-              "The alternatives below are not approved recommendations. Review the evidence, add missing context, or retry Jev."}
-          </p>
-          <div className="decision-meta">
-            {selected && (
-              <span>
-                Decision confidence {Math.round(verdict.jev_confidence * 100)}%
-              </span>
-            )}
-            {id && (
-              <button className="btn" onClick={retry} disabled={busy}>
-                {busy ? "Jev is reviewing…" : "Retry Jev"}
-              </button>
-            )}
-            <button className="btn" onClick={() => window.print()}>
-              Export to PDF
-            </button>
-          </div>
-          {verdict.flags.filter((f) => !f.includes("Jev could")).length > 0 && (
-            <p className="muted">
-              {verdict.flags.map((f) => f.replaceAll("_", " ")).join(" · ")}
-            </p>
-          )}
-        </section>
+        <JevDecision
+          verdict={verdict}
+          candidates={candidates}
+          onRetry={id ? retry : undefined}
+          busy={busy}
+        />
       )}
       {error && <p role="alert">{error}</p>}
       {digest && (
@@ -168,54 +159,7 @@ export function AnalysisResults({
                 : "Estimated execution plan"}
             </span>
           </div>
-          <div className="grid-metrics">
-            <div>
-              <span>Estimated subtree cost</span>
-              <strong>
-                {digest.subtreeCost?.toLocaleString() ?? "Not available"}
-              </strong>
-              <small>Optimizer units, not runtime</small>
-            </div>
-            <div>
-              <span>Tables in scope</span>
-              <strong>{digest.tables.length}</strong>
-              <small>Selected statement only</small>
-            </div>
-            <div>
-              <span>Execution</span>
-              <strong>{digest.parallel ? "Parallel" : "Serial"}</strong>
-              <small>
-                {digest.nonParallelReason ?? "As recorded in the plan"}
-              </small>
-            </div>
-          </div>
-          {(digest.queryTime || digest.memoryGrant) && (
-            <div className="grid-metrics">
-              {digest.queryTime?.elapsedMs != null && (
-                <div>
-                  <span>Measured elapsed time</span>
-                  <strong>
-                    {digest.queryTime.elapsedMs.toLocaleString()} ms
-                  </strong>
-                  <small>
-                    CPU {digest.queryTime.cpuMs?.toLocaleString() ?? "—"} ms
-                  </small>
-                </div>
-              )}
-              {digest.memoryGrant?.grantedKb != null && (
-                <div>
-                  <span>Memory grant</span>
-                  <strong>
-                    {digest.memoryGrant.grantedKb.toLocaleString()} KB
-                  </strong>
-                  <small>
-                    Max used{" "}
-                    {digest.memoryGrant.maxUsedKb?.toLocaleString() ?? "—"} KB
-                  </small>
-                </div>
-              )}
-            </div>
-          )}
+          <MetricTiles digest={digest} />
           {digest.parameters?.some((p) => p.differs) && (
             <p className="notice">
               Compiled for different parameter values than it ran with:{" "}
@@ -232,20 +176,11 @@ export function AnalysisResults({
               Optimization ended early: <strong>{digest.earlyAbort}</strong>
             </p>
           )}
-          {findings.length > 0 && (
-            <div className="findings" data-findings>
-              <h3>Detected issues</h3>
-              <ul>
-                {findings.map((f, i) => (
-                  <li key={i} data-severity={f.severity}>
-                    <span className="pill">{f.severity}</span>{" "}
-                    <strong>{f.title}</strong>
-                    <p className="muted">{f.detail}</p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <div className="subsection">
+            <h3>Detected issues</h3>
+            <FindingCards findings={findings} />
+          </div>
+          <TimeBars digest={digest} />
           <details className="evidence-details">
             <summary>Inspect operators and evidence</summary>
             <div className="table-scroll">
@@ -344,6 +279,15 @@ export function AnalysisResults({
                           : "· Alternative"}
                     </small>
                   </span>
+                  {scores && verdict?.status !== "unavailable" && (
+                    <span
+                      className="opt-score"
+                      title="Jev composite score: weighted fit, safety, ease and root cause"
+                    >
+                      {Math.round(scores.composite * 100)}
+                      <small>score</small>
+                    </span>
+                  )}
                   <Icon name="plus" size={17} />
                 </summary>
                 <div className="option-content">

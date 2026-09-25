@@ -36,7 +36,9 @@ test("full run uses real upload, analyst and Jev contracts, then structured SQL 
     timeout: 60000,
   });
   // Rule findings, the generated validation script, and the before/after comparison.
-  await expect(page.locator("[data-findings]")).toContainText("Row estimate off");
+  await expect(page.locator("[data-findings]")).toContainText(
+    "Row estimate off",
+  );
   await page.locator(".validation-script summary").first().click();
   await expect(page.locator(".validation-script pre").first()).toContainText(
     "SET STATISTICS IO, TIME ON;",
@@ -54,7 +56,9 @@ test("full run uses real upload, analyst and Jev contracts, then structured SQL 
   await page.reload();
   await expect(page.locator("[data-compare] table")).toBeVisible();
   const clipped = await page
-    .locator(".decision-card,.option-card,.grid-metrics")
+    .locator(
+      ".decision-hero,.option-card,.kpis,.finding-card,.timebars,.pipeline",
+    )
     .evaluateAll((elements) =>
       elements
         .filter((el) => el.getBoundingClientRect().right > innerWidth + 1)
@@ -116,7 +120,9 @@ test("stop cancels an in-flight analysis and allows a fresh run", async ({
   await expect(page.locator("#statement")).toBeVisible();
   await page.fill("#note", "qa slow cancellation");
   await page.getByRole("button", { name: "Analyse plan" }).click();
-  await expect(page.getByRole("status")).toContainText("Your analyst");
+  await expect(page.locator(".pipeline")).toContainText(
+    "Options from your model",
+  );
   await page.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Analyse plan" }),
