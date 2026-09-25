@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan" Version="1.564" Build="16.0.4085.2"><BatchSequence><Batch><Statements>
+<StmtSimple StatementText="SELECT o.OrderId, dbo.fn_OrderMargin(o.OrderId) FROM dbo.Orders o WHERE o.OrderDate &gt;= @from" StatementId="1" StatementSubTreeCost="3.2" StatementType="SELECT" StatementOptmLevel="FULL" CardinalityEstimationModelVersion="160" QueryHash="0x1" QueryPlanHash="0x1F">
+<QueryPlan DegreeOfParallelism="1" NonParallelPlanReason="TSQLUserDefinedFunctionsNotParallelizable">
+<QueryTimeStats CpuTime="14100" ElapsedTime="14500" UdfCpuTime="13200" UdfElapsedTime="13600"/>
+<RelOp NodeId="0" PhysicalOp="Compute Scalar" LogicalOp="Compute Scalar" EstimateRows="50000" EstimatedTotalSubtreeCost="3.2"><RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="50000" ActualExecutions="1" ActualElapsedms="14500" ActualCPUms="14100"/></RunTimeInformation><ComputeScalar><RelOp NodeId="1" PhysicalOp="Index Seek" LogicalOp="Index Seek" EstimateRows="50000" EstimatedTotalSubtreeCost="0.3"><OutputList><ColumnReference Database="[Shop]" Schema="[dbo]" Table="[Orders]" Column="OrderId"/></OutputList><RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="50000" ActualExecutions="1" ActualElapsedms="120" ActualCPUms="110" ActualLogicalReads="400"/></RunTimeInformation><IndexScan><Object Database="[Shop]" Schema="[dbo]" Table="[Orders]" Index="[IX_Orders_OrderDate]" IndexKind="NonClustered"/></IndexScan></RelOp></ComputeScalar></RelOp>
+<ParameterList><ColumnReference Column="@from" ParameterDataType="date" ParameterCompiledValue="'2026-08-01'" ParameterRuntimeValue="'2026-08-01'"/></ParameterList>
+</QueryPlan></StmtSimple>
+</Statements></Batch></BatchSequence></ShowPlanXML>

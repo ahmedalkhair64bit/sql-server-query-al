@@ -8,6 +8,9 @@ import type { Digest } from "@/lib/digest";
 import type { Verdict } from "@/lib/jev";
 import { Icon } from "./icons";
 import { copyText } from "@/lib/clipboard";
+import { detectFindings } from "@/lib/findings.mjs";
+import { buildValidationScript } from "@/lib/validation-pack.mjs";
+import { PlanCompare, type Comparison } from "./plan-compare";
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 const labels: Record<string, string> = {
   bottleneck_fit: "Bottleneck fit",
@@ -20,17 +23,21 @@ export function AnalysisResults({
   candidates,
   verdict: initial,
   id,
+  comparison = null,
 }: {
   digest: Digest | null;
   candidates: Candidate[];
   verdict: Verdict | null;
   id?: string;
+  comparison?: Comparison | null;
 }) {
   const [updated, setUpdated] = useState<Verdict | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [copied, setCopied] = useState("");
   const verdict = updated ?? initial;
+  // Rule-based checks re-run from the stored digest, so older analyses get them too.
+  const findings = digest ? detectFindings(digest) : [];
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const states = new Map<HTMLDetailsElement, boolean>();
@@ -225,6 +232,20 @@ export function AnalysisResults({
               Optimization ended early: <strong>{digest.earlyAbort}</strong>
             </p>
           )}
+          {findings.length > 0 && (
+            <div className="findings" data-findings>
+              <h3>Detected issues</h3>
+              <ul>
+                {findings.map((f, i) => (
+                  <li key={i} data-severity={f.severity}>
+                    <span className="pill">{f.severity}</span>{" "}
+                    <strong>{f.title}</strong>
+                    <p className="muted">{f.detail}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <details className="evidence-details">
             <summary>Inspect operators and evidence</summary>
             <div className="table-scroll">
@@ -327,6 +348,11 @@ export function AnalysisResults({
                 </summary>
                 <div className="option-content">
                   <p>{c.diagnosis}</p>
+                  {c.check_warnings?.map((r, i) => (
+                    <p className="notice" key={`w${i}`}>
+                      SQL check: {r}
+                    </p>
+                  ))}
                   {c.rejected_reasons?.map((r, i) => (
                     <p className="notice danger-text" key={i}>
                       {r}
@@ -339,6 +365,7 @@ export function AnalysisResults({
                         "operational_risk",
                         "invalid_evidence",
                         "low_confidence",
+                        "jev_failed",
                       ].includes(f),
                     )
                     .map((f) => (
@@ -355,6 +382,8 @@ export function AnalysisResults({
                                 "The evidence or required validation is incomplete.",
                               low_confidence:
                                 "The assessment is uncertain; gather more evidence.",
+                              jev_failed:
+                                "Jev could not review this option; retry Jev to include it.",
                             } as Record<string, string>
                           )[f]
                         }
@@ -407,6 +436,34 @@ export function AnalysisResults({
                       </pre>
                     </div>
                   )}
+                  {digest && (
+                    <details className="validation-script">
+                      <summary>Validation script (T-SQL)</summary>
+                      <div className="sql-block">
+                        <div>
+                          <span>
+                            Baseline, checks, apply, re-measure, rollback
+                          </span>
+                          <button
+                            className="btn"
+                            onClick={() =>
+                              copy(
+                                buildValidationScript(c, digest),
+                                `${c.key}:validation`,
+                              )
+                            }
+                          >
+                            {copied === `${c.key}:validation`
+                              ? "Copied"
+                              : "Copy script"}
+                          </button>
+                        </div>
+                        <pre className="sql">
+                          <code>{buildValidationScript(c, digest)}</code>
+                        </pre>
+                      </div>
+                    </details>
+                  )}
                   <div className="validation-grid">
                     <div>
                       <h3>Validate the result</h3>
@@ -450,9 +507,11 @@ export function AnalysisResults({
                             />
                           </div>
                           <small>
-                            {d.confidence === null
-                              ? "Probability of root-cause fit"
-                              : `Confidence ${Math.round(d.confidence * 100)}%`}
+                            {d.source === "rule"
+                              ? "Set by rule from the option's SQL"
+                              : d.confidence === null
+                                ? "Probability of root-cause fit"
+                                : `Confidence ${Math.round(d.confidence * 100)}%`}
                           </small>
                         </div>
                       ))}
@@ -468,6 +527,14 @@ export function AnalysisResults({
             );
           })}
         </section>
+      )}
+      {id && digest && candidates.length > 0 && (
+        <PlanCompare
+          id={id}
+          candidates={candidates}
+          recommended={verdict?.source === "jev" ? verdict.headline : null}
+          initial={comparison}
+        />
       )}
     </div>
   );

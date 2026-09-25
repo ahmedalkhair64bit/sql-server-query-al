@@ -1,6 +1,7 @@
 import { z } from "zod/v4";
 import { digestForModel, type Digest } from "./digest.ts";
 import { openAiTextDeltas } from "./stream.ts";
+import { checkCandidateSql } from "./sql-check.mjs";
 import type { AnalystConfig } from "./settings.ts";
 
 export class AnalystError extends Error {}
@@ -38,6 +39,7 @@ export const RawCandidate = z.object({
   validation: Guidance,
   rollback: Guidance,
   rejected_reasons: z.array(z.string()).default([]),
+  check_warnings: z.array(z.string()).default([]),
 });
 const Proposal = z.object({
   candidates: z.array(RawCandidate).max(4),
@@ -202,8 +204,12 @@ export async function proposeCandidates(
       !c.sql_to_run
     )
       reasons.push("Required SQL is missing.");
+    // Deterministic SQL checks: invented tables or columns, unparseable DDL, duplicate index names.
+    const checked = checkCandidateSql(c, digest);
+    reasons.push(...checked.errors);
     return {
       ...c,
+      check_warnings: checked.warnings,
       sql_to_run: reasons.some((r) => /SQL|placeholders/.test(r))
         ? null
         : c.sql_to_run,

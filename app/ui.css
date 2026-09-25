@@ -1258,3 +1258,60 @@ td small {
 .results {
   grid-template-columns: minmax(0, 1fr);
 }
+
+/* Rule-based findings, validation script, before/after comparison */
+.findings ul {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: grid;
+  gap: 8px;
+}
+.findings li {
+  border-left: 3px solid var(--qai-ink-muted);
+  padding: 4px 0 4px 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.findings li[data-severity="critical"] {
+  border-left-color: var(--qai-danger);
+}
+.findings li[data-severity="warning"] {
+  border-left-color: var(--qai-warn);
+}
+.findings li p {
+  margin: 4px 0 0;
+}
+.validation-script {
+  margin: 12px 0;
+}
+.validation-script summary {
+  cursor: pointer;
+  min-height: 30px;
+}
+.validation-script pre {
+  max-height: 420px;
+  overflow: auto;
+}
+.compare-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.compare-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+.compare-controls label:not(.btn) {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.compare-controls select {
+  max-width: 100%;
+}
+.pill[data-verdict="regressed"] {
+  color: var(--qai-danger);
+}

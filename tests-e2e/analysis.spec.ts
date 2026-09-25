@@ -35,6 +35,24 @@ test("full run uses real upload, analyst and Jev contracts, then structured SQL 
   await expect(page.getByRole("button", { name: "Retry Jev" })).toBeEnabled({
     timeout: 60000,
   });
+  // Rule findings, the generated validation script, and the before/after comparison.
+  await expect(page.locator("[data-findings]")).toContainText("Row estimate off");
+  await page.locator(".validation-script summary").first().click();
+  await expect(page.locator(".validation-script pre").first()).toContainText(
+    "SET STATISTICS IO, TIME ON;",
+  );
+  await page.setInputFiles(
+    "input[aria-label='After plan file']",
+    "fixtures/sample.sqlplan",
+  );
+  await expect(page.locator("[data-compare] .pill")).toBeVisible({
+    timeout: 60000,
+  });
+  await expect(page.locator("[data-compare] table")).toContainText(
+    "Estimated subtree cost",
+  );
+  await page.reload();
+  await expect(page.locator("[data-compare] table")).toBeVisible();
   const clipped = await page
     .locator(".decision-card,.option-card,.grid-metrics")
     .evaluateAll((elements) =>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan" Version="1.564" Build="16.0.4085.2"><BatchSequence><Batch><Statements>
+<StmtSimple StatementText="SELECT c.CustomerId FROM dbo.Customers c WHERE c.AccountCode = @code" StatementId="1" StatementSubTreeCost="45.1" StatementType="SELECT" StatementOptmLevel="FULL" CardinalityEstimationModelVersion="160" QueryHash="0x1" QueryPlanHash="0x1F">
+<QueryPlan DegreeOfParallelism="1">
+<Warnings><PlanAffectingConvert ConvertIssue="Seek Plan" Expression="CONVERT_IMPLICIT(nvarchar(20),[c].[AccountCode],0)=[@code]"/></Warnings><QueryTimeStats CpuTime="2350" ElapsedTime="2400"/>
+<RelOp NodeId="0" PhysicalOp="Index Scan" LogicalOp="Index Scan" EstimateRows="1" EstimatedRowsRead="2000000" EstimatedTotalSubtreeCost="45.1"><OutputList><ColumnReference Database="[Shop]" Schema="[dbo]" Table="[Customers]" Column="CustomerId"/></OutputList><RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="1" ActualExecutions="1" ActualElapsedms="2400" ActualCPUms="2350" ActualLogicalReads="31000" ActualRowsRead="2000000"/></RunTimeInformation><IndexScan><Object Database="[Shop]" Schema="[dbo]" Table="[Customers]" Index="[IX_Customers_AccountCode]" IndexKind="NonClustered"/><Predicate><ScalarOperator ScalarString="CONVERT_IMPLICIT(nvarchar(20),[Shop].[dbo].[Customers].[AccountCode] as [c].[AccountCode],0)=[@code]"/></Predicate></IndexScan></RelOp>
+<ParameterList><ColumnReference Column="@code" ParameterDataType="nvarchar(20)" ParameterCompiledValue="N'AC-100'" ParameterRuntimeValue="N'AC-100'"/></ParameterList>
+</QueryPlan></StmtSimple>
+</Statements></Batch></BatchSequence></ShowPlanXML>

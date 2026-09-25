@@ -44,6 +44,7 @@ export default async function Stored({
           digest={JSON.parse(a.digest!)}
           candidates={a.candidates ? JSON.parse(a.candidates) : []}
           verdict={a.verdict ? JSON.parse(a.verdict) : null}
+          comparison={a.comparison ? JSON.parse(a.comparison) : null}
         />
       )}
       {!modern && a.verdict && (

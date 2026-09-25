@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan" Version="1.564" Build="16.0.4085.2"><BatchSequence><Batch><Statements>
+<StmtSimple StatementText="SELECT p.ProductId, p.Name FROM dbo.Products p WHERE p.CategoryId = 7 AND p.Discontinued = 0" StatementId="1" StatementSubTreeCost="28.3" StatementType="SELECT" StatementOptmLevel="FULL" CardinalityEstimationModelVersion="160" QueryHash="0x1" QueryPlanHash="0x1F">
+<QueryPlan DegreeOfParallelism="1">
+
+<MissingIndexes><MissingIndexGroup Impact="96.4"><MissingIndex Database="[Shop]" Schema="[dbo]" Table="[Products]"><ColumnGroup Usage="EQUALITY"><Column Name="[CategoryId]"/><Column Name="[Discontinued]"/></ColumnGroup><ColumnGroup Usage="INCLUDE"><Column Name="[Name]"/></ColumnGroup></MissingIndex></MissingIndexGroup></MissingIndexes>
+<RelOp NodeId="0" PhysicalOp="Clustered Index Scan" LogicalOp="Clustered Index Scan" EstimateRows="420" EstimatedRowsRead="3000000" EstimatedTotalSubtreeCost="28.3"><OutputList><ColumnReference Database="[Shop]" Schema="[dbo]" Table="[Products]" Column="ProductId"/><ColumnReference Database="[Shop]" Schema="[dbo]" Table="[Products]" Column="Name"/></OutputList><IndexScan><Object Database="[Shop]" Schema="[dbo]" Table="[Products]" Index="[PK_Products]" IndexKind="Clustered"/><Predicate><ScalarOperator ScalarString="[Shop].[dbo].[Products].[CategoryId]=(7) AND [Shop].[dbo].[Products].[Discontinued]=(0)"/></Predicate></IndexScan></RelOp>
+</QueryPlan></StmtSimple>
+</Statements></Batch></BatchSequence></ShowPlanXML>

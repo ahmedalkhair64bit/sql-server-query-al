@@ -1,6 +1,7 @@
 import { TypeSafeClient, score, noul, choice } from "@typesafe-ai/sdk";
 import { digestForModel, type Digest } from "./digest.ts";
 import type { Candidate } from "./analyst.ts";
+import { parseDdl } from "./sql-check.mjs";
 
 export type Dim = "bottleneck_fit" | "semantic_safety" | "ease" | "root_cause";
 export const WEIGHTS: Record<Dim, number> = {
@@ -35,11 +36,17 @@ const EASE = [
   "Copy-paste change with no server-side change at all.",
 ] as const;
 
+export type DimScore = {
+  value: number;
+  confidence: number | null;
+  /** "rule" when set deterministically from the option's SQL instead of asked of Jev. */
+  source?: "rule";
+};
 export type Ranked = {
   key: string;
   evidence_support?: number;
   operational_safety?: number;
-  dims: Record<Dim, { value: number; confidence: number | null }>;
+  dims: Record<Dim, DimScore>;
   composite: number;
   flags: string[];
 };
@@ -63,12 +70,13 @@ export const makeJevClient = (apiKey: string, model = "jev-latest") =>
 const norm = (s: number, levels: number) =>
   Math.max(0, Math.min(1, s / (levels - 1)));
 
+type Scored = { score: number; confidence: number | null; source?: "rule" };
 function rank(
   c: Candidate,
   a: {
-    bottleneck_fit: { score: number; confidence: number | null };
-    semantic_safety: { score: number; confidence: number | null };
-    ease: { score: number; confidence: number | null };
+    bottleneck_fit: Scored;
+    semantic_safety: Scored;
+    ease: Scored;
     root_cause: { noul: number };
     evidence_supported?: { noul: number };
     operational_safe?: { noul: number };
@@ -91,13 +99,15 @@ function rank(
     semantic_safety: {
       value: norm(a.semantic_safety.score, SAFETY.length),
       confidence: a.semantic_safety.confidence,
+      ...(a.semantic_safety.source ? { source: a.semantic_safety.source } : {}),
     },
     ease: {
       value: norm(a.ease.score, EASE.length),
       confidence: a.ease.confidence,
+      ...(a.ease.source ? { source: a.ease.source } : {}),
     },
     root_cause: { value: a.root_cause.noul, confidence: null }, // noul reports no confidence
-  } as Record<Dim, { value: number; confidence: number | null }>;
+  } as Record<Dim, DimScore>;
   const composite = (Object.keys(WEIGHTS) as Dim[]).reduce(
     (s, k) => s + WEIGHTS[k] * dims[k].value,
     0,
@@ -134,31 +144,98 @@ function rank(
   };
 }
 
+// Answers that follow from the option's own SQL, so Jev is not asked for an opinion on them.
+// A nonclustered, non-unique index or a statistics change cannot alter the rows a query returns, and the
+// work it takes is known from its type. Unique, clustered, columnstore or filtered indexes stay with Jev.
+export function ruleDims(c: Candidate): {
+  semantic_safety?: Scored;
+  ease?: Scored;
+} {
+  if (!c.sql_to_run || c.rejected_reasons?.length) return {};
+  const ddl = parseDdl(c.sql_to_run);
+  const rolledBack = (c.rollback?.length ?? 0) > 0;
+  const safety = {
+    score: rolledBack ? 4 : 3,
+    confidence: null,
+    source: "rule" as const,
+  };
+  if (
+    c.option_type === "statistics" &&
+    ddl.statistics.length &&
+    !ddl.indexes.length
+  )
+    return {
+      semantic_safety: safety,
+      ease: { score: 3, confidence: null, source: "rule" },
+    };
+  if (
+    c.option_type === "index" &&
+    ddl.indexes.length &&
+    ddl.indexes.every(
+      (i) => !i.unique && !i.clustered && !i.columnstore && !i.filtered,
+    )
+  )
+    return {
+      semantic_safety: safety,
+      ease: { score: 2, confidence: null, source: "rule" },
+    };
+  return {};
+}
+
+// Base evidence every judgment sees, plus what the option itself cites. Sending the full 48 KB digest to
+// every call diluted attention and cost; the findings and top operators carry the bottleneck.
+const BASE_KINDS = new Set([
+  "statement",
+  "query_time",
+  "memory_grant",
+  "finding",
+]);
+export function planFor(digest: Digest, cited: string[]) {
+  const plan = digestForModel(digest);
+  const want = new Set(cited);
+  let operators = 0;
+  plan.evidence = plan.evidence.filter(
+    (e) =>
+      BASE_KINDS.has(e.kind) ||
+      want.has(e.id) ||
+      (e.kind === "operator" && operators++ < 5),
+  );
+  return plan;
+}
+
+const ASK_SAFETY = () =>
+  score(
+    "If `candidate` is applied, how certain is it that the query still returns exactly the same rows as the original?",
+    SAFETY,
+  );
+const ASK_EASE = () =>
+  score(
+    "How easy is `candidate` to apply in a real shop, counting people, approvals, and downtime?",
+    EASE,
+  );
+
 export async function judgeCandidates(
   digest: Digest,
   candidates: Candidate[],
   client: TypeSafeClient,
   signal?: AbortSignal,
 ): Promise<Verdict> {
-  const plan = digestForModel(digest);
-  const per = await Promise.all(
-    candidates.map((c) =>
+  const rules = candidates.map(ruleDims);
+  // One failed judgment excludes that option instead of discarding every answer Jev gave.
+  const settled = await Promise.allSettled(
+    candidates.map((c, i) =>
       client.systemOne(
         {
-          state: { plan, candidate: c },
+          state: { plan: planFor(digest, c.evidence_ids ?? []), candidate: c },
           questions: {
             bottleneck_fit: score(
-              "How directly do the actions in `candidate` attack the dominant bottleneck in `plan` — the most expensive operator and the worst estimate error?",
+              "How directly do the actions in `candidate` attack the dominant bottleneck in `plan`? The bottleneck is the critical `plan.evidence` findings and the operator with the highest own time or reads (own estimated cost when the plan is not actual), plus the worst row-estimate error.",
               BOTTLENECK,
             ),
-            semantic_safety: score(
-              "If `candidate` is applied, how certain is it that the query still returns exactly the same rows as the original?",
-              SAFETY,
-            ),
-            ease: score(
-              "How easy is `candidate` to apply in a real shop, counting people, approvals, and downtime?",
-              EASE,
-            ),
+            ...(rules[i].semantic_safety
+              ? {}
+              : { semantic_safety: ASK_SAFETY() }),
+            ...(rules[i].ease ? {} : { ease: ASK_EASE() }),
             evidence_supported: noul(
               "The material diagnosis and expected benefit in `candidate` are supported by the cited `plan.evidence`, without invented facts or confusing estimates with measured runtime.",
             ),
@@ -174,24 +251,52 @@ export async function judgeCandidates(
       ),
     ),
   );
+  if (signal?.aborted) throw new Error("Jev review cancelled.");
+  if (settled.every((r) => r.status === "rejected"))
+    throw (settled[0] as PromiseRejectedResult).reason;
 
+  const failed = new Set<string>();
   const order = candidates
-    .map((c, i) => rank(c, per[i].answers))
+    .map((c, i) => {
+      const r = settled[i];
+      if (r.status === "rejected") {
+        failed.add(c.key);
+        const blank = rank(c, {
+          bottleneck_fit: { score: 0, confidence: null },
+          semantic_safety: { score: 0, confidence: null },
+          ease: { score: 0, confidence: null },
+          root_cause: { noul: 0 },
+        });
+        return {
+          ...blank,
+          flags: [
+            ...blank.flags.filter((f) => f === "change_control"),
+            "jev_failed",
+          ],
+        };
+      }
+      const answers = r.value.answers as Parameters<typeof rank>[1];
+      return rank(c, {
+        ...answers,
+        semantic_safety: rules[i].semantic_safety ?? answers.semantic_safety,
+        ease: rules[i].ease ?? answers.ease,
+      });
+    })
     .sort((a, b) => b.composite - a.composite);
-  const eligible = candidates.filter(
-    (c) =>
-      !order
-        .find((r) => r.key === c.key)!
-        .flags.some((f) =>
-          [
-            "verify_semantics",
-            "invalid_evidence",
-            "low_confidence",
-            "unsupported_claim",
-            "operational_risk",
-          ].includes(f),
-        ) &&
-      order.find((r) => r.key === c.key)!.dims.bottleneck_fit.value >= 0.25,
+  const BLOCKING = [
+    "verify_semantics",
+    "invalid_evidence",
+    "low_confidence",
+    "unsupported_claim",
+    "operational_risk",
+    "jev_failed",
+  ];
+  const isEligible = (r: Ranked) =>
+    !r.flags.some((f) => BLOCKING.includes(f)) &&
+    r.dims.bottleneck_fit.value >= 0.25;
+  const eligibleRanked = order.filter(isEligible);
+  const eligible = eligibleRanked.map((r) =>
+    candidates.find((c) => c.key === r.key)!,
   );
   if (!eligible.length)
     return {
@@ -205,14 +310,17 @@ export async function judgeCandidates(
       agrees: false,
       anything_worth_running: 0,
       weights: WEIGHTS,
-      flags: ["no_suitable_action"],
+      flags: ["no_suitable_action", ...(failed.size ? ["jev_partial"] : [])],
     };
   const cross = await client.systemOne(
     {
       state: {
-        plan,
+        plan: planFor(
+          digest,
+          eligible.flatMap((c) => c.evidence_ids ?? []),
+        ),
         options: eligible,
-        judgments: JSON.parse(JSON.stringify(order)),
+        judgments: JSON.parse(JSON.stringify(eligibleRanked)),
       },
       questions: {
         first_to_run: choice(
@@ -239,6 +347,7 @@ export async function judgeCandidates(
   if (pick.confidence < 0.5) flags.push("low_confidence");
   if (worth < 0.5) flags.push("nothing_clearly_worthwhile");
   if (!valid) flags.push("no_suitable_action");
+  if (failed.size) flags.push("jev_partial");
   return {
     version: 2,
     status: useJev ? "selected" : "abstained",
@@ -247,7 +356,8 @@ export async function judgeCandidates(
     headline: useJev ? pick.choice : null,
     jev_pick: valid ? pick.choice : null,
     jev_confidence: pick.confidence,
-    agrees: valid && pick.choice === order[0].key,
+    // Agreement with the best option Jev could choose, not with an ineligible composite leader.
+    agrees: valid && pick.choice === eligibleRanked[0].key,
     anything_worth_running: worth,
     weights: WEIGHTS,
     flags,

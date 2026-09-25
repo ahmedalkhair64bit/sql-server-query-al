@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan" Version="1.564" Build="16.0.4085.2"><BatchSequence><Batch><Statements>
+<StmtSimple StatementText="SELECT o.OrderId, o.Total FROM dbo.Orders o WHERE o.OrderId = @id" StatementId="1" StatementSubTreeCost="0.0033" StatementType="SELECT" StatementOptmLevel="FULL" CardinalityEstimationModelVersion="160" QueryHash="0x1" QueryPlanHash="0x1F">
+<QueryPlan DegreeOfParallelism="1">
+<QueryTimeStats CpuTime="0" ElapsedTime="0"/>
+<RelOp NodeId="0" PhysicalOp="Clustered Index Seek" LogicalOp="Clustered Index Seek" EstimateRows="1" EstimatedTotalSubtreeCost="0.0033"><OutputList><ColumnReference Database="[Shop]" Schema="[dbo]" Table="[Orders]" Column="OrderId"/><ColumnReference Database="[Shop]" Schema="[dbo]" Table="[Orders]" Column="Total"/></OutputList><RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="1" ActualExecutions="1" ActualElapsedms="0" ActualCPUms="0" ActualLogicalReads="3"/></RunTimeInformation><IndexScan><Object Database="[Shop]" Schema="[dbo]" Table="[Orders]" Index="[PK_Orders]" IndexKind="Clustered"/></IndexScan></RelOp>
+<ParameterList><ColumnReference Column="@id" ParameterDataType="int" ParameterCompiledValue="(5)" ParameterRuntimeValue="(5)"/></ParameterList>
+</QueryPlan></StmtSimple>
+</Statements></Batch></BatchSequence></ShowPlanXML>

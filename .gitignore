@@ -46,3 +46,6 @@ next-env.d.ts
 *.tgz
 *.tar
 *.zip
+
+# Your own anonymized evaluation plans (see scripts/eval-plans.mjs)
+fixtures/eval/private/
