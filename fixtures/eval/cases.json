@@ -98,6 +98,95 @@
       "description": "A single-row clustered seek: nothing to fix. Declining to pick is the right answer.",
       "expect_findings": [],
       "correct_fix_types": []
+    },
+    {
+      "file": "parallel-skew.sqlplan",
+      "description": "One parallel thread reads 1.9 million rows while seven read 15,000 each; CXPACKET dominates.",
+      "expect_findings": [
+        "parallel_skew",
+        "wait_parallelism"
+      ],
+      "correct_fix_types": [
+        "rewrite",
+        "statistics",
+        "ops",
+        "index"
+      ]
+    },
+    {
+      "file": "index-spool.sqlplan",
+      "description": "The optimizer builds a temporary index over Orders on every run because no index on CustomerId includes Total.",
+      "expect_findings": [
+        "index_spool"
+      ],
+      "correct_fix_types": [
+        "index"
+      ]
+    },
+    {
+      "file": "non-sargable.sqlplan",
+      "description": "YEAR(OrderDate) = 2025 scans an index that a date-range predicate could seek.",
+      "expect_findings": [
+        "non_sargable"
+      ],
+      "correct_fix_types": [
+        "rewrite"
+      ]
+    },
+    {
+      "file": "blocking-waits.sqlplan",
+      "description": "A one-row update that waited 29.5 seconds on a lock: the plan is fine, another session was blocking.",
+      "expect_findings": [
+        "wait_blocking"
+      ],
+      "correct_fix_types": [
+        "ops"
+      ]
+    },
+    {
+      "file": "row-goal.sqlplan",
+      "description": "TOP 10 made the optimizer expect to stop after 50 orders; it read 1.8 million because EMEA customers are rare.",
+      "expect_findings": [
+        "row_goal",
+        "many_executions"
+      ],
+      "correct_fix_types": [
+        "rewrite",
+        "index"
+      ]
+    },
+    {
+      "file": "expensive-sort.sqlplan",
+      "description": "Sorting 900,000 rows is 87% of the time; an index on (Status, OrderDate) delivers them in order.",
+      "expect_findings": [
+        "expensive_sort"
+      ],
+      "correct_fix_types": [
+        "index"
+      ]
+    },
+    {
+      "file": "unmatched-filtered-index.sqlplan",
+      "description": "A filtered index on Status = 'Open' exists but a parameterized query cannot use it.",
+      "expect_findings": [
+        "unmatched_indexes",
+        "residual_predicate"
+      ],
+      "correct_fix_types": [
+        "rewrite"
+      ]
+    },
+    {
+      "file": "linked-server.sqlplan",
+      "description": "The filter runs locally after pulling 3 million rows across a linked server.",
+      "expect_findings": [
+        "remote_query",
+        "row_estimate_error"
+      ],
+      "correct_fix_types": [
+        "rewrite",
+        "app"
+      ]
     }
   ]
 }

@@ -58,6 +58,8 @@ export type Verdict = {
   version?: number;
   jev_pick: string | null;
   jev_confidence: number;
+  /** Jev's probability for each choice, including no_suitable_action: how clear-cut the decision was. */
+  jev_probabilities?: Record<string, number>;
   agrees: boolean;
   anything_worth_running: number;
   weights: Record<Dim, number>;
@@ -219,14 +221,23 @@ export async function judgeCandidates(
   candidates: Candidate[],
   client: TypeSafeClient,
   signal?: AbortSignal,
+  /** The DBA's own note: constraints Jev must weigh, e.g. "no schema changes this week". */
+  constraints = "",
 ): Promise<Verdict> {
   const rules = candidates.map(ruleDims);
+  const context: Record<string, string> = constraints.trim()
+    ? { constraints: constraints.slice(0, 2000) }
+    : {};
   // One failed judgment excludes that option instead of discarding every answer Jev gave.
   const settled = await Promise.allSettled(
     candidates.map((c, i) =>
       client.systemOne(
         {
-          state: { plan: planFor(digest, c.evidence_ids ?? []), candidate: c },
+          state: {
+            plan: planFor(digest, c.evidence_ids ?? []),
+            candidate: c,
+            ...context,
+          },
           questions: {
             bottleneck_fit: score(
               "How directly do the actions in `candidate` attack the dominant bottleneck in `plan`? The bottleneck is the critical `plan.evidence` findings and the operator with the highest own time or reads (own estimated cost when the plan is not actual), plus the worst row-estimate error.",
@@ -240,7 +251,7 @@ export async function judgeCandidates(
               "The material diagnosis and expected benefit in `candidate` are supported by the cited `plan.evidence`, without invented facts or confusing estimates with measured runtime.",
             ),
             operational_safe: noul(
-              "The actions in `candidate` have acceptable operational risk for review as a first step, considering locks, downtime, prerequisites, validation and rollback. Unknown prerequisites require verification before execution.",
+              "The actions in `candidate` have acceptable operational risk for review as a first step, considering locks, downtime, prerequisites, validation and rollback, and the DBA's `constraints` when present. Unknown prerequisites require verification before execution.",
             ),
             root_cause: noul(
               "The diagnosis in `candidate` names the actual cause of the cost in `plan`, not a symptom of it.",
@@ -321,10 +332,11 @@ export async function judgeCandidates(
         ),
         options: eligible,
         judgments: JSON.parse(JSON.stringify(eligibleRanked)),
+        ...context,
       },
       questions: {
         first_to_run: choice(
-          "Which option should the DBA review first, considering complete actions, evidence, prerequisites, safety, operational risk and the judgments? Choose no_suitable_action if evidence is insufficient or all actions are unsuitable. A plan estimate is not a measured improvement.",
+          "Which option should the DBA review first, considering complete actions, the critical findings in `plan.evidence`, prerequisites, safety, operational risk, the judgments and the DBA's `constraints` when present? Choose no_suitable_action if evidence is insufficient or all actions are unsuitable. A plan estimate is not a measured improvement.",
           {
             ...Object.fromEntries(
               eligible.map((c) => [c.key, `${c.title} — ${c.expected}`]),
@@ -356,6 +368,7 @@ export async function judgeCandidates(
     headline: useJev ? pick.choice : null,
     jev_pick: valid ? pick.choice : null,
     jev_confidence: pick.confidence,
+    jev_probabilities: pick.probabilities ?? undefined,
     // Agreement with the best option Jev could choose, not with an ineligible composite leader.
     agrees: valid && pick.choice === eligibleRanked[0].key,
     anything_worth_running: worth,

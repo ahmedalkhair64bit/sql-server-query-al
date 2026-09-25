@@ -36,6 +36,7 @@ function openDb(): DatabaseSync {
     (d.prepare("PRAGMA table_info(analyses)").all() as { name: string }[]).map((c) => c.name),
   );
   if (!cols.has("comparison")) d.exec("ALTER TABLE analyses ADD COLUMN comparison TEXT");
+  if (!cols.has("note")) d.exec("ALTER TABLE analyses ADD COLUMN note TEXT");
   const settingCols = new Set(
     (d.prepare("PRAGMA table_info(settings)").all() as { name: string }[]).map((c) => c.name),
   );
@@ -67,7 +68,7 @@ export type SettingsInput = { analyst_base_url: string; analyst_key: string; ana
   analyst_extra: string; jev_key: string; jev_model: string; onboarded: number };
 export type Analysis = { id: string; title: string; xml: string; digest: string | null; candidates: string | null;
   verdict: string | null; oul: string | null; status: string; error: string | null; created_at: number;
-  comparison: string | null };
+  comparison: string | null; note: string | null };
 
 export function createUser(email: string, passHash: string): string {
   const id = randomUUID();
@@ -135,7 +136,7 @@ export function newAnalysis(userId: string, title: string, xml: string): string 
 }
 
 // patchAnalysis builds its SET list from object keys, so the keys have to be checked, not trusted.
-const PATCHABLE = new Set(["digest", "candidates", "verdict", "oul", "status", "error", "title", "comparison"]);
+const PATCHABLE = new Set(["digest", "candidates", "verdict", "oul", "status", "error", "title", "comparison", "note"]);
 export function patchAnalysis(id: string, p: Record<string, string>) {
   const keys = Object.keys(p).filter((k) => PATCHABLE.has(k));
   if (!keys.length) return;

@@ -422,3 +422,36 @@ test("Jev sees base evidence, findings, the top operators and what the option ci
     "uncited raw evidence dropped",
   );
 });
+
+test("the DBA's constraints reach every Jev question, and the choice probabilities are kept", async () => {
+  const states: any[] = [];
+  const client = new TypeSafeClient({
+    apiKey: "test",
+    fetch: (async (_u: any, init: any) => {
+      const body = JSON.parse(init.body);
+      states.push(body.state);
+      const answers = body.questions.first_to_run
+        ? GOOD.cross
+        : GOOD.byKey[body.state.candidate.key as "a" | "b"];
+      return new Response(
+        JSON.stringify({ model: "jev", usage: {}, answers }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }) as any,
+    retry: { maxRetries: 0 },
+  });
+  const v = await judgeCandidates(
+    digest,
+    candidates,
+    client,
+    undefined,
+    "No schema changes until Friday.",
+  );
+  assert.ok(states.length >= 3);
+  for (const s of states)
+    assert.equal(s.constraints, "No schema changes until Friday.");
+  assert.deepEqual(v.jev_probabilities, { a: 0.82, b: 0.18 });
+});

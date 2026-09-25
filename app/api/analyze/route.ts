@@ -86,7 +86,7 @@ export async function POST(req: Request) {
       "",
     );
     attachPlan(id, planId, statementId);
-    patchAnalysis(id, { digest: JSON.stringify(digest) });
+    patchAnalysis(id, { digest: JSON.stringify(digest), note });
     const ac = new AbortController();
     let abandoned = false;
     const stream = new ReadableStream<Uint8Array>({
@@ -121,6 +121,7 @@ export async function POST(req: Request) {
               candidates,
               makeJevClient(jev, jevModel(u.id)),
               ac.signal,
+              note,
             );
           } catch {
             verdict = jevFallback(

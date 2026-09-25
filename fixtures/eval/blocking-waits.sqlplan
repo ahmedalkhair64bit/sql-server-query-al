@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan" Version="1.564" Build="16.0.4085.2"><BatchSequence><Batch><Statements>
+<StmtSimple StatementText="UPDATE dbo.Inventory SET Qty = Qty - 1 WHERE Sku = @sku" StatementId="1" StatementSubTreeCost="0.0066" StatementType="SELECT" StatementOptmLevel="FULL" CardinalityEstimationModelVersion="160" QueryHash="0x2" QueryPlanHash="0x2F">
+<QueryPlan DegreeOfParallelism="8">
+<WaitStats><Wait WaitType="LCK_M_U" WaitTimeMs="29500" WaitCount="10"/><Wait WaitType="PAGEIOLATCH_SH" WaitTimeMs="20" WaitCount="10"/></WaitStats><QueryTimeStats CpuTime="2" ElapsedTime="29600"/>
+<RelOp NodeId="0" PhysicalOp="Clustered Index Update" LogicalOp="Update" EstimateRows="1" EstimatedTotalSubtreeCost="0.0066"><RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="1" ActualExecutions="1" ActualElapsedms="29600" ActualCPUms="2"/></RunTimeInformation><Update><Object Database="[Shop]" Schema="[dbo]" Table="[Inventory]" Index="[PK_Inventory]" IndexKind="Clustered"/><RelOp NodeId="1" PhysicalOp="Clustered Index Seek" LogicalOp="Clustered Index Seek" EstimateRows="1" EstimatedTotalSubtreeCost="0.0033"><OutputList><ColumnReference Database="[Shop]" Schema="[dbo]" Table="[Inventory]" Column="Sku"/><ColumnReference Database="[Shop]" Schema="[dbo]" Table="[Inventory]" Column="Qty"/></OutputList><RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="1" ActualExecutions="1" ActualElapsedms="29590" ActualCPUms="1" ActualLogicalReads="3"/></RunTimeInformation><IndexScan><Object Database="[Shop]" Schema="[dbo]" Table="[Inventory]" Index="[PK_Inventory]" IndexKind="Clustered"/></IndexScan></RelOp></Update></RelOp>
+<ParameterList><ColumnReference Column="@sku" ParameterDataType="varchar(20)" ParameterCompiledValue="'A-1'" ParameterRuntimeValue="'A-1'"/></ParameterList>
+</QueryPlan></StmtSimple>
+</Statements></Batch></BatchSequence></ShowPlanXML>

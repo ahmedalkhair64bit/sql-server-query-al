@@ -38,6 +38,8 @@ export async function POST(
         digestForModels(u.id, JSON.parse(a.digest)),
         candidates,
         makeJevClient(key, jevModel(u.id)),
+        undefined,
+        a.note ?? "",
       );
     } catch {
       verdict = jevFallback(
