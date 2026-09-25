@@ -4,7 +4,11 @@ import { readFileSync } from "node:fs";
 import { parsePlanText, recommendStatement } from "../lib/plan-parser.mjs";
 import { decodeBytes } from "../lib/plan-decoder.mjs";
 import { detectFindings } from "../lib/findings.mjs";
-import { checkCandidateSql, parseDdl } from "../lib/sql-check.mjs";
+import {
+  checkCandidateSql,
+  isSystemReadOnly,
+  parseDdl,
+} from "../lib/sql-check.mjs";
 import { buildValidationScript } from "../lib/validation-pack.mjs";
 import { compareDigests } from "../lib/compare.mjs";
 
@@ -375,4 +379,25 @@ test("a rewrite may create a temp table before the query", () => {
     d,
   );
   assert.ok(bad.errors.some((e) => /DELETE/.test(e)));
+});
+
+test("a diagnostic that only reads system views is recognised; anything that writes or reads user data is not", () => {
+  for (const sql of [
+    "SELECT r.session_id, r.blocking_session_id, t.text FROM sys.dm_exec_requests r CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t;",
+    "select * from [sys].[dm_os_waiting_tasks] w join sys.dm_exec_sessions s on s.session_id = w.session_id",
+    "WITH b AS (SELECT session_id FROM sys.dm_exec_requests) SELECT * FROM b",
+  ])
+    assert.ok(isSystemReadOnly(sql), sql);
+  for (const sql of [
+    "SELECT * FROM dbo.Orders",
+    "SELECT * INTO #x FROM sys.objects",
+    "KILL 53",
+    "EXEC sp_who2",
+    "DBCC INPUTBUFFER(53)",
+    "ALTER DATABASE Shop SET READ_COMMITTED_SNAPSHOT ON",
+    "SELECT 1 FROM sys.objects; DROP TABLE dbo.x",
+    "SELECT * FROM (SELECT * FROM dbo.Orders) x",
+    "SELECT * FROM sys.objects WHERE name = @n",
+  ])
+    assert.ok(!isSystemReadOnly(sql), sql);
 });

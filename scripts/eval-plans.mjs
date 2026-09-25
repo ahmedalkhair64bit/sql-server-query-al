@@ -127,6 +127,7 @@ async function runCase({ dir, c }) {
     row.pickedTitle = picked?.title ?? null;
     row.confidence = verdict.jev_confidence;
     row.flags = verdict.flags;
+    row.probabilities = verdict.jev_probabilities;
     row.detail = verdict.order.map((r) => ({
       key: r.key,
       type: candidates.find((x) => x.key === r.key)?.option_type,

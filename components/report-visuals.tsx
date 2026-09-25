@@ -82,12 +82,26 @@ export function ConfidenceRing({
 
 const FLAG_TEXT: Record<string, string> = {
   low_confidence: "Jev was not confident enough in any single option.",
+  split_decision:
+    "Jev's weight was split between good options; this is its favourite.",
   nothing_clearly_worthwhile:
     "Jev judged that no option is clearly worth running on this evidence.",
   no_suitable_action: "Every option failed a safety, evidence or fit check.",
   jev_partial: "Jev could not review every option; retry to include them.",
   jev_unavailable: "Jev could not be reached, so nothing was selected.",
 };
+
+/** "45% vs 40%": Jev's pick against the runner-up, for a decision split between two good options. */
+function closeCall(verdict: Verdict) {
+  const probs = Object.entries(verdict.jev_probabilities ?? {}).sort(
+    (a, b) => b[1] - a[1],
+  );
+  const pick = probs.find(([k]) => k === verdict.headline)?.[1];
+  const next = probs.find(([k]) => k !== verdict.headline)?.[1];
+  return pick != null && next != null
+    ? `${Math.round(pick * 100)}% vs ${Math.round(next * 100)}% for the next option`
+    : "two options were nearly tied";
+}
 
 /** How Jev weighed each choice. Bars share one hue; the pick is marked by label and weight, not colour alone. */
 export function ProbabilityBars({
@@ -219,6 +233,9 @@ export function JevDecision({
             <li>
               <strong>{judged - blocked}</strong> passed every check
             </li>
+            {selected && verdict.flags.includes("split_decision") && (
+              <li data-split>Close call: {closeCall(verdict)}</li>
+            )}
             {selected && (
               <li>
                 {verdict.agrees

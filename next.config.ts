@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
       "./lib/plan-worker.mjs",
       "./lib/plan-parser.mjs",
       "./lib/plan-decoder.mjs",
+      "./lib/findings.mjs",
       "./node_modules/saxes/**",
       "./node_modules/xmlchars/**",
     ],

@@ -534,4 +534,67 @@ test("an ops or app option with no SQL is scored safe by rule; one with SQL is s
     ruleDims({ ...base, option_type: "rewrite", sql_to_run: "SELECT 1" }),
     {},
   );
+  assert.equal(
+    ruleDims({
+      ...base,
+      option_type: "ops",
+      sql_to_run:
+        "SELECT session_id, blocking_session_id FROM sys.dm_exec_requests WHERE blocking_session_id <> 0;",
+    }).semantic_safety?.source,
+    "rule",
+    "a read-only diagnostic on system views cannot change the query's rows",
+  );
+});
+
+test("a split between two good options still selects Jev's favourite; a lean to 'more evidence' does not", async () => {
+  const cross = (probabilities: Record<string, number>, choice: string) => ({
+    first_to_run: {
+      type: "choice",
+      choice,
+      confidence: probabilities[choice],
+      probabilities,
+    },
+    anything_worth_running: { type: "noul", noul: 0.9 },
+  });
+  const both = { a: scored(4, 4, 2, 0.9), b: scored(4, 4, 3, 0.9) };
+  const safeB = [
+    candidates[0],
+    {
+      ...candidates[1],
+      option_type: "statistics",
+      sql_to_run: "UPDATE STATISTICS dbo.Orders;",
+    },
+  ];
+  const split = await judgeCandidates(
+    digest,
+    safeB,
+    fakeJev({
+      byKey: both,
+      cross: cross({ a: 0.45, b: 0.4, no_suitable_action: 0.15 }, "a"),
+    }),
+  );
+  assert.equal(split.headline, "a");
+  assert.ok(split.flags.includes("split_decision"));
+  const unsure = await judgeCandidates(
+    digest,
+    safeB,
+    fakeJev({
+      byKey: both,
+      cross: cross({ a: 0.4, b: 0.2, no_suitable_action: 0.4 }, "a"),
+    }),
+  );
+  assert.equal(
+    unsure.headline,
+    null,
+    "40% on 'collect more evidence' is not a split",
+  );
+  const weak = await judgeCandidates(
+    digest,
+    safeB,
+    fakeJev({
+      byKey: both,
+      cross: cross({ a: 0.25, b: 0.24, no_suitable_action: 0.2, c: 0.31 }, "a"),
+    }),
+  );
+  assert.equal(weak.headline, null, "not Jev's favourite");
 });

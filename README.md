@@ -252,6 +252,13 @@ npm run e2e
 npm run benchmark:plans
 ```
 
+Before publishing an image, run the API stress suite against it. It uses controlled providers and a throwaway data directory: concurrent analyses, large uploads, provider faults, disconnects and a double-clicked retry.
+
+```bash
+docker build -t qai:test .
+npm run stress:api -- --docker qai:test
+```
+
 Default browser tests use isolated `.playwright-data` storage and controlled provider responses. Live integration tests require `JEV_API_KEY`, `QAI_ANALYST_BASE_URL`, and `QAI_ANALYST_MODEL`, plus any provider-specific key or extra parameters, in your local environment. Build first, then run `npm run e2e:live`. Do not commit the credentials.
 
 The deployed release passed 43 browser regression cases across Chromium, Firefox, WebKit, and mobile, plus live analyst/Jev and restart-persistence checks. A server-local 100 MB upload/indexing probe took approximately 3.5 seconds; results depend on hardware and network conditions.
@@ -282,4 +289,4 @@ It reports how often Jev picks a correct fix type, and declines on the healthy p
 
 To test Jev on its own, without an analyst key, `JEV_API_KEY=... npm run eval:jev` gives the real Jev a fixed set of options per plan: one correct fix, a plausible decoy, and sometimes a risky option such as NOLOCK or a rewrite that changes results. Measured on 2026-09-25 with `jev-latest`: correct on 16 of 17 plans. It declined on the healthy plan, picked "find the blocker" over an index on the blocking plan, and flagged every risky option. The one miss (parallel skew) was a decline: Jev judged the "investigate the skew" option as not well supported by the evidence. Add your own anonymized plans to `fixtures/eval/private/` (gitignored) with a `cases.json` in the same shape. `npm run eval:plans -- --outcomes data/qai.db` reports real outcomes from saved before/after comparisons.
 
-Full pipeline, measured on 2026-09-25 with DeepSeek V4-Pro as the analyst (maximum response length 32,000) and `jev-latest`, on 22 plans: 14 correct (64%). The analyst proposed a correct option on all 22. An earlier run on 18 of the plans scored 14 of 18, so results vary between runs. Most misses are Jev declining when two good options split its confidence below 0.5, or when its low confidence in fit or safety blocked an option. Reasoning models like DeepSeek take 2 to 5 minutes per analysis.
+Full pipeline, measured on 2026-09-25 with DeepSeek V4-Pro as the analyst (maximum response length 32,000) and `jev-latest`, on 22 plans. The latest full run scored 18 of 22 (82%); the run before it scored 14 of 22 with the same code, so single runs vary by several plans. The analyst proposed a correct option on all 22. A read-only diagnostic on system views is now judged safe by rule, which fixed blocking-waits on re-run. The two plans that still fail on re-runs are genuine disagreements: on row-goal Jev prefers a statistics update over the rewrite or index, and on unmatched-filtered-index it prefers a new covering index over fixing the parameterization that stops the existing filtered index being used. Reasoning models like DeepSeek take 2 to 5 minutes per analysis.
