@@ -44,6 +44,21 @@ export function Runner() {
     [id, setId] = useState<string>();
   const abort = useRef<AbortController | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  // Onboarding ends with "Analyse the sample plan": /app?sample=1 loads the bundled plan ready to run.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("sample") !== "1")
+      return;
+    window.history.replaceState(null, "", "/app");
+    void fetch("/samples/key-lookup.sqlplan")
+      .then((r) => r.blob())
+      .then(async (b) => {
+        await upload(b, "Sample plan: key lookup");
+        setNote(
+          "Sample plan from onboarding: a key lookup executed 60,000 times.",
+        );
+      })
+      .catch(() => setError("The sample plan could not be loaded."));
+  }, []);
   useEffect(() => {
     const reset = () => {
       abort.current?.abort();

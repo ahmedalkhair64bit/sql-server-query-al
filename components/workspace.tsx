@@ -17,11 +17,21 @@ export type HistoryRow = {
   status: string;
   created_at: number;
 };
+const HEALTH = {
+  ok: ["Models connected", "Both models passed their last connection test."],
+  failed: [
+    "Model check failed",
+    "A model failed its last connection test. Open Settings to fix it.",
+  ],
+  untested: ["Models not tested", "Test both connections in Settings."],
+} as const;
 export function Workspace({
   rows,
+  health = "untested",
   children,
 }: {
   rows: HistoryRow[];
+  health?: "ok" | "failed" | "untested";
   children: React.ReactNode;
 }) {
   const path = usePathname();
@@ -187,9 +197,9 @@ export function Workspace({
           <div className="account-line">
             <span className="avatar">Q</span>
             <div>
-              Personal workspace<small>Powered by your models</small>
+              Personal workspace<small>{HEALTH[health][0]}</small>
             </div>
-            <span className="connection-dot" />
+            <span className="connection-dot" data-health={health} />
           </div>
         </div>
       </aside>
@@ -218,10 +228,16 @@ export function Workspace({
               {path === "/settings" ? "Settings" : "Plan analysis"}
             </span>
           </div>
-          <span className="model-badge">
-            <span className="connection-dot" />
-            Jev decision engine
-          </span>
+          {/* Real state from the last connection tests, not a decoration. */}
+          <Link
+            href="/settings#models"
+            className="model-badge"
+            data-health={health}
+            title={HEALTH[health][1]}
+          >
+            <span className="connection-dot" data-health={health} />
+            {HEALTH[health][0]}
+          </Link>
         </header>
         <main id="workspace-content" className="main">
           {children}

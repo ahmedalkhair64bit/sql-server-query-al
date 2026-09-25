@@ -58,6 +58,11 @@ export async function startSession(userId: string) {
     // Only a TLS proxy reports https; COOKIE_SECURE=1 forces it on for a direct https deploy.
   });
 }
+/** Hash of the caller's own session token, so a password change can keep it and drop the others. */
+export async function currentSessionHash(): Promise<string | null> {
+  const t = (await jar()).get(SESSION_COOKIE)?.value;
+  return t ? hashToken(t) : null;
+}
 export async function endSession() {
   const store = await jar();
   const t = store.get(SESSION_COOKIE)?.value;

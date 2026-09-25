@@ -4,7 +4,7 @@ import { test, expect } from "@playwright/test";
 // silently drops it, so a production build on plain http looked like "the wizard signed me out".
 // This file must stay self-contained: it signs up its own account and never uses .auth/user.json.
 
-test("signup, wizard Next links, and /app stay logged in over plain http", async ({
+test("signup, wizard links, and /app stay logged in over plain http", async ({
   page,
 }) => {
   const email = `safari${Date.now()}@qai.test`;
@@ -16,17 +16,17 @@ test("signup, wizard Next links, and /app stay logged in over plain http", async
   await expect(page).toHaveURL(/\/setup/, { timeout: 20_000 });
   await expect(page.getByText("Step 1 of 3")).toBeVisible();
 
-  await page.getByRole("link", { name: "Next" }).click();
+  await page.getByRole("link", { name: "Connect models" }).click();
   await expect(page).toHaveURL(/step=2/);
   await expect(
-    page.getByRole("heading", {
-      name: "Say which models to ask.",
-      exact: true,
-    }),
+    page.getByRole("heading", { name: "Connect your models", exact: true }),
   ).toBeVisible();
 
-  await page.getByRole("link", { name: "Next" }).click();
-  await expect(page).toHaveURL(/step=3/);
+  // Step 3 without keys says what is missing instead of "Ready".
+  await page.goto("/setup?step=3");
+  await expect(
+    page.getByRole("heading", { name: "Almost there" }),
+  ).toBeVisible();
 
   // Session proof: this user has no keys yet, so the console gate sends them to the guide.
   // Signed-in lands on /setup?step=2; a lost session would land on /login.
@@ -47,5 +47,7 @@ test("a reload deep in the app keeps the session", async ({ page }) => {
   await page.reload();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   // The form is still here after the reload: this is the account's own settings page, not the login form.
-  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Save model settings" }),
+  ).toBeVisible();
 });
