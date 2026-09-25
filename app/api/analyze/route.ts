@@ -1,17 +1,5 @@
 import { requireUser } from "@/lib/auth";
-import {
-  analystConfig,
-  jevKey,
-  jevModel,
-  digestForModels,
-} from "@/lib/settings";
-import { proposeCandidates, AnalystError } from "@/lib/analyst";
-import {
-  judgeCandidates,
-  jevFallback,
-  makeJevClient,
-  nothingToFix,
-} from "@/lib/jev";
+import { analystConfig, jevKey } from "@/lib/settings";
 import { sse } from "@/lib/stream";
 import { newAnalysis, patchAnalysis } from "@/lib/db";
 import {
@@ -20,6 +8,11 @@ import {
   statementDigest,
   attachPlan,
 } from "@/lib/server/plans";
+import {
+  startAnalysis,
+  runningCount,
+  MAX_RUNNING_PER_USER,
+} from "@/lib/server/jobs";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
@@ -83,6 +76,13 @@ export async function POST(req: Request) {
         { error: "Select a statement first." },
         { status: 400 },
       );
+    if (runningCount(u.id) >= MAX_RUNNING_PER_USER)
+      return Response.json(
+        {
+          error: `You already have ${MAX_RUNNING_PER_USER} analyses running. Wait for one to finish.`,
+        },
+        { status: 429 },
+      );
     const digest = await statementDigest(planId, statementId);
     const note = String(body.note ?? "").slice(0, 2000);
     const id = newAnalysis(
@@ -92,98 +92,24 @@ export async function POST(req: Request) {
     );
     attachPlan(id, planId, statementId);
     patchAnalysis(id, { digest: JSON.stringify(digest), note });
-    const ac = new AbortController();
-    let abandoned = false;
+    // The run belongs to the server. This response only watches it: closing the page stops the watching,
+    // never the analysis (use /api/analyses/[id]/stop for that).
+    let watching = true;
     const stream = new ReadableStream<Uint8Array>({
-      async start(ctrl) {
+      start(ctrl) {
         const send = (event: string, data: unknown) => {
-          if (!abandoned)
-            ctrl.enqueue(new TextEncoder().encode(sse(event, data)));
+          if (!watching) return;
+          ctrl.enqueue(new TextEncoder().encode(sse(event, data)));
+          if (event === "done") {
+            watching = false;
+            ctrl.close();
+          }
         };
-        try {
-          send("created", { id });
-          send("stage", { stage: "digesting" });
-          // The page renders the stored digest (operators, warnings); the model gets digestForModel.
-          send("digest", digest);
-          send("stage", { stage: "proposing" });
-          // The privacy setting can withhold the statement text from both models.
-          const modelDigest = digestForModels(u.id, digest);
-          let candidates;
-          try {
-            candidates = await proposeCandidates(
-              analyst,
-              modelDigest,
-              note,
-              fetch,
-              ac.signal,
-            );
-          } catch (e) {
-            // The analyst saying there is nothing to fix is a result, not a failure.
-            if (
-              !(e instanceof AnalystError) ||
-              !/^Insufficient evidence/.test(e.message)
-            )
-              throw e;
-            const verdict = nothingToFix(
-              e.message.replace(/^Insufficient evidence:\s*/, ""),
-            );
-            patchAnalysis(id, {
-              candidates: "[]",
-              verdict: JSON.stringify(verdict),
-              status: "done",
-            });
-            send("candidates", []);
-            send("verdict", verdict);
-            send("done", { id });
-            return;
-          }
-          patchAnalysis(id, { candidates: JSON.stringify(candidates) });
-          send("candidates", candidates);
-          if (abandoned) return;
-          send("stage", { stage: "judging" });
-          let verdict;
-          try {
-            verdict = await judgeCandidates(
-              modelDigest,
-              candidates,
-              makeJevClient(jev, jevModel(u.id)),
-              ac.signal,
-              note,
-            );
-          } catch {
-            verdict = jevFallback(
-              candidates,
-              "Jev could not be reached. Retry the decision when the service is available.",
-            );
-          }
-          if (abandoned) return;
-          patchAnalysis(id, {
-            verdict: JSON.stringify(verdict),
-            status: "done",
-          });
-          send("verdict", verdict);
-          send("done", { id });
-        } catch (e) {
-          const message = abandoned
-            ? "Analysis cancelled."
-            : (e as Error).message;
-          patchAnalysis(id, {
-            status: abandoned ? "abandoned" : "failed",
-            error: message,
-          });
-          send("error", { stage: "analysis", message });
-          send("done", { id });
-        } finally {
-          if (!abandoned) ctrl.close();
-        }
+        send("created", { id });
+        startAnalysis({ id, userId: u.id, digest, note }, send);
       },
       cancel() {
-        abandoned = true;
-        ac.abort();
-        patchAnalysis(id, {
-          status: "abandoned",
-          error: "Stopped before the analysis completed.",
-        });
+        watching = false;
       },
     });
     return new Response(stream, {

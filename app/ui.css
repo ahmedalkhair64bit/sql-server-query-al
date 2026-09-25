@@ -2246,3 +2246,27 @@ a.model-badge:hover {
     font-size: var(--qai-text-xl);
   }
 }
+
+/* ---- a run continuing on the server ---- */
+.live-run {
+  display: grid;
+  gap: var(--qai-space-md);
+}
+.live-run .pipeline {
+  margin-top: 0;
+}
+.live-run-note {
+  margin: 0;
+  color: var(--qai-ink-muted);
+  font-size: var(--qai-text-sm);
+}
+.live-run-actions,
+.run-again {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--qai-space-md);
+}
+.run-again .report-alert {
+  flex-basis: 100%;
+}

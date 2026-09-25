@@ -4,6 +4,8 @@ import { getAnalysis } from "@/lib/db";
 import { ReportView } from "@/components/report-view";
 import { ExportButtons } from "@/components/export-buttons";
 import { AnalysisResults } from "@/components/analysis-results";
+import { LiveRun, RunAgain } from "@/components/live-run";
+import { runningJob } from "@/lib/server/jobs";
 
 export default async function Stored({
   params,
@@ -13,25 +15,34 @@ export default async function Stored({
   const u = await requireUser();
   const a = getAnalysis((await params).id, u.id);
   if (!a) notFound();
-  // Never redirect here: a row left "running" by a crashed process would bounce this page to itself forever.
-  const interrupted = a.status === "running";
+  // Never redirect here: a row left "running" by a restarted process would bounce this page forever.
+  // A run lives in this process: "running" with no job means a restart interrupted it.
+  const job = a.status === "running" ? runningJob(a.id) : null;
+  const interrupted = a.status === "running" && !job;
+  const canRerun =
+    !job &&
+    a.status !== "done" &&
+    !!a.digest &&
+    JSON.parse(a.digest).version === 2;
   const modern = a.digest && JSON.parse(a.digest).version === 2;
   return (
     <section className="report-page">
       <h1 className="report-title" title={a.title}>
         {a.title}
       </h1>
+      {job && <LiveRun id={a.id} stage={job.stage} startedAt={job.startedAt} />}
       {interrupted && (
         <p role="alert" className="report-alert warn">
-          This run was interrupted before it finished — what is below is
-          everything it managed to produce.
+          This run was interrupted before it finished (the server restarted).
+          What is below is everything it managed to produce.
         </p>
       )}
-      {a.error && (
+      {a.error && !job && (
         <p role="alert" className="report-alert danger">
           {a.error}
         </p>
       )}
+      {canRerun && <RunAgain id={a.id} />}
       {modern && (
         <AnalysisResults
           id={a.id}
