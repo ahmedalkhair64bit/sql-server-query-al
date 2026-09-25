@@ -70,6 +70,7 @@ export default defineConfig({
           env: {
             DATA_DIR: ".playwright-data",
             APP_SECRET: process.env.APP_SECRET ?? "playwright-secret-value",
+            ALLOW_SIGNUP: "1",
             ...(!live ? { TYPESAFE_BASE_URL: "http://127.0.0.1:18889" } : {}),
           },
         },

@@ -1,3 +1,4 @@
+import { staticUrlProblem } from "./egress.ts";
 import {
   getSettings,
   saveSettings,
@@ -106,6 +107,8 @@ export function saveModelSettings(
       ok: false,
       error: "The base URL must start with http:// or https://.",
     };
+  const urlProblem = baseUrl ? staticUrlProblem(baseUrl) : null;
+  if (urlProblem) return { ok: false, error: urlProblem };
   if (baseUrl.includes("YOUR-RESOURCE"))
     return {
       ok: false,

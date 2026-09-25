@@ -1,6 +1,8 @@
 "use server";
 import { releasePlan } from "./server/plans";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { retryAfter, recordFailure, clearFailures } from "@/lib/throttle";
 import { revalidatePath } from "next/cache";
 import {
   userByEmail,
@@ -36,13 +38,31 @@ export async function signUp(_: unknown, fd: FormData) {
   await startSession(r.id);
   redirect("/setup");
 }
+const clientAddress = async () => {
+  const h = await headers();
+  return (
+    h.get("x-forwarded-for")?.split(",")[0].trim() ||
+    h.get("x-real-ip") ||
+    "direct"
+  );
+};
 export async function signIn(_: unknown, fd: FormData) {
   const e = String(fd.get("email") ?? "")
     .trim()
     .toLowerCase();
+  const ip = await clientAddress();
+  const wait = retryAfter(e, ip);
+  if (wait)
+    return {
+      ok: false,
+      error: `Too many failed sign-ins. Try again in ${Math.ceil(wait / 60)} minute(s).`,
+    };
   const u = emailOk(e) ? userByEmail(e) : null;
-  if (!u || !verifyPassword(String(fd.get("password") ?? ""), u.pass))
+  if (!u || !verifyPassword(String(fd.get("password") ?? ""), u.pass)) {
+    recordFailure(e, ip);
     return { ok: false, error: "Email or password is wrong." };
+  }
+  clearFailures(e);
   await startSession(u.id);
   redirect(getSettings(u.id)?.onboarded === 1 ? "/app" : "/setup");
 }
@@ -101,8 +121,16 @@ export async function saveAccountAction(
   const next = String(fd.get("new_password") ?? "");
   const changes: string[] = [];
   if (next) {
-    if (!verifyPassword(current, userPassword(u.id)?.pass ?? ""))
+    const ip = await clientAddress();
+    if (retryAfter(u.email, ip))
+      return {
+        ok: false,
+        error: "Too many wrong passwords. Try again in 15 minutes.",
+      };
+    if (!verifyPassword(current, userPassword(u.id)?.pass ?? "")) {
+      recordFailure(u.email, ip);
       return { ok: false, error: "The current password is wrong." };
+    }
     if (!passwordOk(next))
       return {
         ok: false,

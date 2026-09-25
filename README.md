@@ -180,7 +180,11 @@ You can stop a running analysis, reopen saved reports, rename or delete history 
 
 This public repository and the published image exclude deployment secrets, real databases, user sessions, analyzed production plans, and QA recordings. The one included plan fixture is synthetic and exists for automated tests. Internal development history containing runtime data is not part of this repository.
 
-For an internet-facing installation, place the app behind HTTPS and appropriate network/access controls. Signup is available to anyone who can reach the app; this release does not include a registration allowlist or built-in rate limiting. The container runs as a non-root user.
+For an internet-facing installation, place the app behind HTTPS and appropriate network/access controls. The container runs as a non-root user.
+
+- **Sign-up closes after the first account.** The first person to sign up owns the installation. To let a teammate create an account, restart with `ALLOW_SIGNUP=1`, then remove it again.
+- **Failed sign-ins are throttled:** five failures lock that email for 15 minutes, and thirty failures from one address lock that address. The count is kept in memory and resets on restart.
+- **Model URLs cannot target link-local or cloud metadata addresses** (`169.254.0.0/16`, `metadata.google.internal`, `fe80::/10`), checked after DNS resolution, and redirects are not followed. Loopback and private addresses stay allowed for Ollama and vLLM.
 
 ## Persistence, backup, and upgrades
 
@@ -206,6 +210,7 @@ Do not use `docker compose down -v` unless you intend to delete the application'
 | `APP_SECRET` | Required | At least 16 characters; use a strong randomly generated value. |
 | `DATA_DIR` | `./data` locally; `/data` in Docker | Database, uploads, and statement indexes. |
 | `PORT` | `3000` | Application listening port. |
+| `ALLOW_SIGNUP` | Unset | Set to `1` to let more people create accounts. Without it, only the first account can sign up. |
 | `COOKIE_SECURE` | Unset | Set to `1` for direct HTTPS if the proxy does not supply `X-Forwarded-Proto`. Leave unset for plain local HTTP. |
 | `QAI_IMAGE` | Published `20260922` tag | Compose image selection; not an application setting. |
 

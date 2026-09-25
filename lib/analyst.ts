@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import { guardedFetch } from "./egress.ts";
 import { digestForModel, type Digest } from "./digest.ts";
 import { openAiTextDeltas } from "./stream.ts";
 import { checkCandidateSql } from "./sql-check.mjs";
@@ -144,7 +145,7 @@ export async function proposeCandidates(
   cfg: AnalystConfig,
   digest: Digest,
   note: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = guardedFetch,
   signal?: AbortSignal,
 ): Promise<Candidate[]> {
   // Reasoning models (DeepSeek, Qwen3, o-series) spend part of max_tokens thinking; a long think can leave
@@ -283,7 +284,7 @@ export async function* streamReport(
   cfg: AnalystConfig,
   payload: unknown,
   openuiPrompt: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = guardedFetch,
   signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const res = await fetchImpl(`${cfg.baseUrl}/chat/completions`, {
