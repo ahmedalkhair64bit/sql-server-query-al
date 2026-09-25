@@ -1,9 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { parsePlanText } from "../lib/plan-parser.mjs";
+import { parsePlanText, recommendStatement } from "../lib/plan-parser.mjs";
+import { decodeBytes } from "../lib/plan-decoder.mjs";
 import { detectFindings } from "../lib/findings.mjs";
-import { checkCandidateSql, parseDdl } from "../lib/sql-check.mjs";
+import {
+  checkCandidateSql,
+  isSystemReadOnly,
+  parseDdl,
+} from "../lib/sql-check.mjs";
 import { buildValidationScript } from "../lib/validation-pack.mjs";
 import { compareDigests } from "../lib/compare.mjs";
 
@@ -13,8 +18,11 @@ const cases = JSON.parse(readFileSync("fixtures/eval/cases.json", "utf8"))
   expect_findings: string[];
   correct_fix_types: string[];
 }[];
+// Read like the upload path does: SSMS saves plans as UTF-16.
 const load = (file: string) =>
-  parsePlanText(readFileSync(`fixtures/eval/${file}`, "utf8"))[0];
+  recommendStatement(
+    parsePlanText(decodeBytes(readFileSync(`fixtures/eval/${file}`))),
+  );
 
 // ---- item 6: the evaluation set, deterministic half (the live half is scripts/eval-plans.mjs) ----
 for (const c of cases)
@@ -315,4 +323,81 @@ test("the suggested statement is the one that ran longest, not the costliest est
     w.once("error", no);
   });
   assert.equal(r.recommended, "s2");
+});
+
+test("columns named only inside a predicate count as referenced", () => {
+  const p = load("non-sargable.sqlplan");
+  const r = checkCandidateSql(
+    {
+      option_type: "index",
+      sql_to_run:
+        "CREATE INDEX IX_Orders_OrderDate_2 ON dbo.Orders (OrderDate) INCLUDE (OrderId);",
+    },
+    p,
+  );
+  assert.ok(
+    !r.errors.some((e) => /never references/.test(e)),
+    r.errors.join(" "),
+  );
+});
+
+test("parallel operators count one execution, not one per thread", () => {
+  const d = load("complex-report.sqlplan");
+  assert.equal(
+    d.statementId,
+    "s2",
+    "the 48 s report is analysed, not the INSERT",
+  );
+  const customers = d.rowGuessErrors.find((r: { id: string }) => r.id === "12");
+  assert.equal(customers.est, 1200);
+  assert.equal(
+    customers.actual,
+    480000,
+    "8 threads x 1 execution is one execution",
+  );
+  // The nested-loop inner side really ran 6.3 million times and keeps that count: no false miss.
+  assert.ok(!d.rowGuessErrors.some((r: { id: string }) => r.id === "15"));
+});
+
+test("a rewrite may create a temp table before the query", () => {
+  const d = load("table-variable.sqlplan");
+  const ok = checkCandidateSql(
+    {
+      option_type: "rewrite",
+      sql_to_run:
+        "CREATE TABLE #ids (Id int PRIMARY KEY); INSERT INTO #ids (Id) SELECT Id FROM @ids; SELECT o.OrderId FROM #ids AS i JOIN dbo.Orders AS o ON o.OrderId = i.Id;",
+    },
+    d,
+  );
+  assert.deepEqual(ok.errors, []);
+  assert.ok(ok.warnings.some((w) => /setup statements/.test(w)));
+  const bad = checkCandidateSql(
+    {
+      option_type: "rewrite",
+      sql_to_run: "CREATE TABLE #t (a int); DELETE FROM dbo.Orders;",
+    },
+    d,
+  );
+  assert.ok(bad.errors.some((e) => /DELETE/.test(e)));
+});
+
+test("a diagnostic that only reads system views is recognised; anything that writes or reads user data is not", () => {
+  for (const sql of [
+    "SELECT r.session_id, r.blocking_session_id, t.text FROM sys.dm_exec_requests r CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t;",
+    "select * from [sys].[dm_os_waiting_tasks] w join sys.dm_exec_sessions s on s.session_id = w.session_id",
+    "WITH b AS (SELECT session_id FROM sys.dm_exec_requests) SELECT * FROM b",
+  ])
+    assert.ok(isSystemReadOnly(sql), sql);
+  for (const sql of [
+    "SELECT * FROM dbo.Orders",
+    "SELECT * INTO #x FROM sys.objects",
+    "KILL 53",
+    "EXEC sp_who2",
+    "DBCC INPUTBUFFER(53)",
+    "ALTER DATABASE Shop SET READ_COMMITTED_SNAPSHOT ON",
+    "SELECT 1 FROM sys.objects; DROP TABLE dbo.x",
+    "SELECT * FROM (SELECT * FROM dbo.Orders) x",
+    "SELECT * FROM sys.objects WHERE name = @n",
+  ])
+    assert.ok(!isSystemReadOnly(sql), sql);
 });

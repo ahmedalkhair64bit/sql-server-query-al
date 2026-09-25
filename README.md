@@ -180,7 +180,11 @@ You can stop a running analysis, reopen saved reports, rename or delete history 
 
 This public repository and the published image exclude deployment secrets, real databases, user sessions, analyzed production plans, and QA recordings. The one included plan fixture is synthetic and exists for automated tests. Internal development history containing runtime data is not part of this repository.
 
-For an internet-facing installation, place the app behind HTTPS and appropriate network/access controls. Signup is available to anyone who can reach the app; this release does not include a registration allowlist or built-in rate limiting. The container runs as a non-root user.
+For an internet-facing installation, place the app behind HTTPS and appropriate network/access controls. The container runs as a non-root user.
+
+- **Sign-up closes after the first account.** The first person to sign up owns the installation. To let a teammate create an account, restart with `ALLOW_SIGNUP=1`, then remove it again.
+- **Failed sign-ins are throttled:** five failures lock that email for 15 minutes, and thirty failures from one address lock that address. The count is kept in memory and resets on restart.
+- **Model URLs cannot target link-local or cloud metadata addresses** (`169.254.0.0/16`, `metadata.google.internal`, `fe80::/10`), checked after DNS resolution, and redirects are not followed. Loopback and private addresses stay allowed for Ollama and vLLM.
 
 ## Persistence, backup, and upgrades
 
@@ -206,6 +210,7 @@ Do not use `docker compose down -v` unless you intend to delete the application'
 | `APP_SECRET` | Required | At least 16 characters; use a strong randomly generated value. |
 | `DATA_DIR` | `./data` locally; `/data` in Docker | Database, uploads, and statement indexes. |
 | `PORT` | `3000` | Application listening port. |
+| `ALLOW_SIGNUP` | Unset | Set to `1` to let more people create accounts. Without it, only the first account can sign up. |
 | `COOKIE_SECURE` | Unset | Set to `1` for direct HTTPS if the proxy does not supply `X-Forwarded-Proto`. Leave unset for plain local HTTP. |
 | `QAI_IMAGE` | Published `20260922` tag | Compose image selection; not an application setting. |
 
@@ -252,6 +257,13 @@ npm run e2e
 npm run benchmark:plans
 ```
 
+Before publishing an image, run the API stress suite against it. It uses controlled providers and a throwaway data directory: concurrent analyses, large uploads, provider faults, disconnects and a double-clicked retry.
+
+```bash
+docker build -t qai:test .
+npm run stress:api -- --docker qai:test
+```
+
 Default browser tests use isolated `.playwright-data` storage and controlled provider responses. Live integration tests require `JEV_API_KEY`, `QAI_ANALYST_BASE_URL`, and `QAI_ANALYST_MODEL`, plus any provider-specific key or extra parameters, in your local environment. Build first, then run `npm run e2e:live`. Do not commit the credentials.
 
 The deployed release passed 43 browser regression cases across Chromium, Firefox, WebKit, and mobile, plus live analyst/Jev and restart-persistence checks. A server-local 100 MB upload/indexing probe took approximately 3.5 seconds; results depend on hardware and network conditions.
@@ -267,6 +279,8 @@ tests/         Unit tests
 tests-e2e/     Playwright browser tests
 ```
 
+The interface follows the locked design system in [`design.md`](design.md): OKLCH tokens in `app/tokens.css`, Space Grotesk, Inter and JetBrains Mono, all self-hosted.
+
 Built with Next.js, React, SQLite, a streaming XML parser, and the TypeSafe SDK.
 
 ### Measuring recommendation quality
@@ -278,4 +292,8 @@ ANALYST_BASE_URL=https://api.example.com/v1 ANALYST_API_KEY=... ANALYST_MODEL=..
 JEV_API_KEY=... npm run eval:plans
 ```
 
-It reports how often Jev picks a correct fix type, and declines on the healthy plan. Add your own anonymized plans to `fixtures/eval/private/` (gitignored) with a `cases.json` in the same shape. `npm run eval:plans -- --outcomes data/qai.db` reports real outcomes from saved before/after comparisons.
+It reports how often Jev picks a correct fix type, and declines on the healthy plan.
+
+To test Jev on its own, without an analyst key, `JEV_API_KEY=... npm run eval:jev` gives the real Jev a fixed set of options per plan: one correct fix, a plausible decoy, and sometimes a risky option such as NOLOCK or a rewrite that changes results. Measured on 2026-09-25 with `jev-latest`: correct on 16 of 17 plans. It declined on the healthy plan, picked "find the blocker" over an index on the blocking plan, and flagged every risky option. The one miss (parallel skew) was a decline: Jev judged the "investigate the skew" option as not well supported by the evidence. Add your own anonymized plans to `fixtures/eval/private/` (gitignored) with a `cases.json` in the same shape. `npm run eval:plans -- --outcomes data/qai.db` reports real outcomes from saved before/after comparisons.
+
+Full pipeline, measured on 2026-09-25 with DeepSeek V4-Pro as the analyst (maximum response length 32,000) and `jev-latest`, on 22 plans. The latest full run scored 18 of 22 (82%); the run before it scored 14 of 22 with the same code, so single runs vary by several plans. The analyst proposed a correct option on all 22. A read-only diagnostic on system views is now judged safe by rule, which fixed blocking-waits on re-run. The two plans that still fail on re-runs are genuine disagreements: on row-goal Jev prefers a statistics update over the rewrite or index, and on unmatched-filtered-index it prefers a new covering index over fixing the parameterization that stops the existing filtered index being used. Reasoning models like DeepSeek take 2 to 5 minutes per analysis.

@@ -324,3 +324,42 @@ test("a cut-off JSON answer is reported as cut off, not as prose", async () => {
     /prose instead of JSON/,
   );
 });
+
+test("a cut-off answer is retried once with twice the response limit", async () => {
+  const { proposeCandidates } = await import("../lib/analyst.ts");
+  const limits: number[] = [];
+  const good = JSON.stringify({ candidates: CANDS.candidates });
+  const fake = (async (_u: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body));
+    limits.push(body.max_tokens);
+    const cut = limits.length === 1;
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: { content: cut ? "" : good },
+            finish_reason: cut ? "length" : "stop",
+          },
+        ],
+      }),
+    );
+  }) as unknown as typeof fetch;
+  const out = await proposeCandidates(
+    { ...cfg, extra: { max_tokens: 16000 } },
+    digest,
+    "",
+    fake,
+  );
+  assert.deepEqual(limits, [16000, 32000]);
+  assert.ok(out.length >= 2);
+  const always = (async () =>
+    new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "" }, finish_reason: "length" }],
+      }),
+    )) as unknown as typeof fetch;
+  await assert.rejects(
+    () => proposeCandidates(cfg, digest, "", always),
+    /spent its whole response budget reasoning/,
+  );
+});

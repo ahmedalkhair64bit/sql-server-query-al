@@ -455,3 +455,146 @@ test("the DBA's constraints reach every Jev question, and the choice probabiliti
     assert.equal(s.constraints, "No schema changes until Friday.");
   assert.deepEqual(v.jev_probabilities, { a: 0.82, b: 0.18 });
 });
+
+test("uncertainty about effort alone does not block an option; uncertainty about fit does", async () => {
+  const unsureEase = {
+    ...scored(4, 4, 2, 0.9),
+    ease: {
+      type: "score",
+      score: 2,
+      confidence: 0.1,
+      legend: {},
+      probabilities: {},
+    },
+  };
+  const v = await judgeCandidates(
+    digest,
+    [{ ...candidates[0], option_type: "app", sql_to_run: null }, candidates[1]],
+    fakeJev({ ...GOOD, byKey: { a: unsureEase, b: GOOD.byKey.b } }),
+  );
+  const a = v.order.find((r) => r.key === "a")!;
+  assert.ok(a.flags.includes("effort_uncertain"));
+  assert.ok(!a.flags.includes("low_confidence"));
+  assert.equal(v.headline, "a");
+  const unsureFit = {
+    ...scored(4, 4, 2, 0.9),
+    bottleneck_fit: {
+      type: "score",
+      score: 4,
+      confidence: 0.1,
+      legend: {},
+      probabilities: {},
+    },
+  };
+  const w = await judgeCandidates(
+    digest,
+    [{ ...candidates[0], option_type: "app", sql_to_run: null }, candidates[1]],
+    fakeJev({ ...GOOD, byKey: { a: unsureFit, b: GOOD.byKey.b } }),
+  );
+  assert.ok(
+    w.order.find((r) => r.key === "a")!.flags.includes("low_confidence"),
+  );
+  assert.equal(w.headline, null);
+});
+
+test("an empty option list is refused clearly, and 'nothing to fix' is a finished result", async () => {
+  await assert.rejects(
+    () => judgeCandidates(digest, [], fakeJev(GOOD)),
+    /no options for Jev/,
+  );
+  const { nothingToFix } = await import("../lib/jev.ts");
+  const v = nothingToFix("No performance problem in this plan.");
+  assert.equal(v.headline, null);
+  assert.deepEqual(v.flags, ["nothing_to_fix"]);
+  assert.equal(v.reason, "No performance problem in this plan.");
+});
+
+test("an ops or app option with no SQL is scored safe by rule; one with SQL is still judged", async () => {
+  const { ruleDims } = await import("../lib/jev.ts");
+  const base = { ...candidates[0], rollback: ["x"] };
+  assert.equal(
+    ruleDims({ ...base, option_type: "ops", sql_to_run: null }).semantic_safety
+      ?.source,
+    "rule",
+  );
+  assert.equal(
+    ruleDims({ ...base, option_type: "app", sql_to_run: null }).semantic_safety
+      ?.score,
+    3,
+  );
+  assert.deepEqual(
+    ruleDims({
+      ...base,
+      option_type: "ops",
+      sql_to_run: "ALTER DATABASE Shop SET READ_COMMITTED_SNAPSHOT ON;",
+    }),
+    {},
+  );
+  assert.deepEqual(
+    ruleDims({ ...base, option_type: "rewrite", sql_to_run: "SELECT 1" }),
+    {},
+  );
+  assert.equal(
+    ruleDims({
+      ...base,
+      option_type: "ops",
+      sql_to_run:
+        "SELECT session_id, blocking_session_id FROM sys.dm_exec_requests WHERE blocking_session_id <> 0;",
+    }).semantic_safety?.source,
+    "rule",
+    "a read-only diagnostic on system views cannot change the query's rows",
+  );
+});
+
+test("a split between two good options still selects Jev's favourite; a lean to 'more evidence' does not", async () => {
+  const cross = (probabilities: Record<string, number>, choice: string) => ({
+    first_to_run: {
+      type: "choice",
+      choice,
+      confidence: probabilities[choice],
+      probabilities,
+    },
+    anything_worth_running: { type: "noul", noul: 0.9 },
+  });
+  const both = { a: scored(4, 4, 2, 0.9), b: scored(4, 4, 3, 0.9) };
+  const safeB = [
+    candidates[0],
+    {
+      ...candidates[1],
+      option_type: "statistics",
+      sql_to_run: "UPDATE STATISTICS dbo.Orders;",
+    },
+  ];
+  const split = await judgeCandidates(
+    digest,
+    safeB,
+    fakeJev({
+      byKey: both,
+      cross: cross({ a: 0.45, b: 0.4, no_suitable_action: 0.15 }, "a"),
+    }),
+  );
+  assert.equal(split.headline, "a");
+  assert.ok(split.flags.includes("split_decision"));
+  const unsure = await judgeCandidates(
+    digest,
+    safeB,
+    fakeJev({
+      byKey: both,
+      cross: cross({ a: 0.4, b: 0.2, no_suitable_action: 0.4 }, "a"),
+    }),
+  );
+  assert.equal(
+    unsure.headline,
+    null,
+    "40% on 'collect more evidence' is not a split",
+  );
+  const weak = await judgeCandidates(
+    digest,
+    safeB,
+    fakeJev({
+      byKey: both,
+      cross: cross({ a: 0.25, b: 0.24, no_suitable_action: 0.2, c: 0.31 }, "a"),
+    }),
+  );
+  assert.equal(weak.headline, null, "not Jev's favourite");
+});

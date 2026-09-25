@@ -25,3 +25,5 @@
 **/*.pem
 **/*.key
 **/node_modules/**
+# The bundled sample the setup wizard offers ("Try a sample plan"): synthetic, safe to ship.
+!public/samples/*.sqlplan

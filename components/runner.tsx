@@ -1,5 +1,4 @@
 "use client";
-import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readSse } from "@/lib/stream";
@@ -107,7 +106,14 @@ export function Runner() {
       setPlan(data);
       setStatement(data.recommended);
     } catch (e) {
-      if (!ac.signal.aborted) setError((e as Error).message);
+      if (ac.signal.aborted) return;
+      // The server refuses a third concurrent upload without reading its body, so the browser can see
+      // the connection close ("Failed to fetch") instead of the 429 answer.
+      setError(
+        e instanceof TypeError
+          ? "The upload was cut off. The server may be busy with two other uploads, or the connection dropped. Try again in a moment."
+          : (e as Error).message,
+      );
     } finally {
       setStage(null);
     }
@@ -163,7 +169,14 @@ export function Runner() {
           "The connection ended before analysis completed. Check the saved analysis in history.",
         );
     } catch (e) {
-      if (!ac.signal.aborted) setError((e as Error).message);
+      if (ac.signal.aborted) return;
+      // The server refuses a third concurrent upload without reading its body, so the browser can see
+      // the connection close ("Failed to fetch") instead of the 429 answer.
+      setError(
+        e instanceof TypeError
+          ? "The upload was cut off. The server may be busy with two other uploads, or the connection dropped. Try again in a moment."
+          : (e as Error).message,
+      );
     } finally {
       setStage(null);
     }
@@ -177,19 +190,10 @@ export function Runner() {
   return (
     <div className="analysis-workspace">
       <section className="welcome">
-        <div className="welcome-brand">
-          <Image
-            src="/brand/logo.png"
-            alt="SQL Server Query AI — Analyze, troubleshoot, optimize"
-            width={190}
-            height={190}
-            priority
-          />
-        </div>
         <h1>A clearer path to a faster query.</h1>
         <p>
-          Bring your execution plan. Explore the possibilities.
-          <br className="desktop-only" /> Let Jev help you choose the next move.
+          Upload an execution plan. The analyst proposes distinct fixes, and Jev
+          picks the one to run first.
         </p>
       </section>
       <section className="composer">
@@ -377,25 +381,6 @@ export function Runner() {
       {error && (
         <div className="notice danger-text" role="alert">
           {error}
-        </div>
-      )}
-      {!digest && !stage && (
-        <div className="workspace-guidance">
-          <div>
-            <Icon name="file" />
-            <h3>Start with the evidence</h3>
-            <p>Estimated or actual plans, even complex batches.</p>
-          </div>
-          <div>
-            <Icon name="chart" />
-            <h3>Compare real alternatives</h3>
-            <p>Distinct remedies with steps and validation.</p>
-          </div>
-          <div>
-            <Icon name="shield" />
-            <h3>A considered next step</h3>
-            <p>Jev evaluates fit, safety, and operational effort.</p>
-          </div>
         </div>
       )}
       <details className="help-details">

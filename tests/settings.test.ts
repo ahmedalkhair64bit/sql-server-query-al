@@ -272,6 +272,7 @@ test("provider presets are recognised from a saved URL", () => {
     "ollama",
   );
   assert.equal(providerFor("https://llm.internal.corp/v1").id, "custom");
+  assert.equal(providerFor("https://api.deepseek.com/v1").id, "deepseek");
 });
 
 test("a password change keeps this session and drops the others", () => {

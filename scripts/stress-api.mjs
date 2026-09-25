@@ -3,11 +3,19 @@
 // options, Jev down, Jev hanging), client disconnects and double-clicked "Retry Jev".
 //
 //   npm run build && npm run stress:api [-- --concurrency 20]
+//   docker build -t qai:test . && npm run stress:api -- --docker qai:test
 //
 // It starts its own mock providers and app on port 3300 with a throwaway database; nothing is shared with
 // a real installation.
-import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  chmodSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, createHash } from "node:crypto";
@@ -59,8 +67,39 @@ const waitFor = async (url) => {
   }
   throw new Error(`${url} did not come up`);
 };
+// --docker IMAGE runs the same checks against a built image instead of `next start`: the release gate.
+const IMAGE = process.argv.includes("--docker")
+  ? process.argv[process.argv.indexOf("--docker") + 1]
+  : null;
+const CONTAINER = `qai-stress-${process.pid}`;
+if (IMAGE) {
+  // The container runs as `node`, this script as whoever you are: keep the throwaway data dir writable by both.
+  process.umask(0);
+  chmodSync(DATA, 0o777);
+  process.on("exit", () =>
+    spawnSync("docker", ["rm", "-f", CONTAINER], { stdio: "ignore" }),
+  );
+}
 start("node", ["scripts/qa-providers.mjs"]);
-const app = start("npx", ["next", "start", "-p", String(PORT)]);
+const app = IMAGE
+  ? start("docker", [
+      "run",
+      "--rm",
+      "--name",
+      CONTAINER,
+      "--network",
+      "host",
+      "-v",
+      `${DATA}:/data`,
+      "-e",
+      `PORT=${PORT}`,
+      "-e",
+      `APP_SECRET=${SECRET}`,
+      "-e",
+      `TYPESAFE_BASE_URL=${env.TYPESAFE_BASE_URL}`,
+      IMAGE,
+    ])
+  : start("npx", ["next", "start", "-p", String(PORT)]);
 await waitFor("http://127.0.0.1:18889/health");
 await waitFor(`${BASE}/api/healthz`);
 
@@ -88,6 +127,8 @@ db.putSession(
   Date.now() + 864e5,
 );
 const cookie = `qai_s=${token}`;
+// SQLite creates its files 0644 whatever the umask; the container's `node` user must write them too.
+if (IMAGE) for (const f of readdirSync(DATA)) chmodSync(join(DATA, f), 0o666);
 
 const upload = async (body, name = "stress.sqlplan") => {
   const r = await fetch(`${BASE}/api/plans`, {
@@ -99,7 +140,19 @@ const upload = async (body, name = "stress.sqlplan") => {
     },
     body,
     duplex: "half",
+  }).catch((e) => {
+    // A refused upload (429) is answered before its body is read, so the client may instead see the
+    // socket close mid-write. That is still a refusal; anything else is a real failure.
+    if (
+      /EPIPE|ECONNRESET|other side closed/.test(
+        String(e.cause?.code ?? e.cause?.message ?? e),
+      )
+    )
+      return null;
+    throw e;
   });
+  if (!r)
+    return { status: 429, data: { error: "connection closed while refused" } };
   return { status: r.status, data: await r.json() };
 };
 // Runs one analysis and reads the event stream to the end.
@@ -142,6 +195,7 @@ async function analyze(plan, note = "", { abortAfterMs } = {}) {
     ms: performance.now() - started,
     id: events.created?.id,
     verdict: events.verdict?.status,
+    flags: events.verdict?.flags ?? [],
     error: events.error?.message,
   };
 }
@@ -152,6 +206,16 @@ const pct = (xs, p) => {
   );
 };
 const rss = () => {
+  // In a container the app is not our child process: ask Docker for the container's memory instead.
+  if (IMAGE) {
+    const out = spawnSync(
+      "docker",
+      ["stats", "--no-stream", "--format", "{{.MemUsage}}", CONTAINER],
+      { encoding: "utf8" },
+    ).stdout;
+    const m = /([\d.]+)\s*(KiB|MiB|GiB)/.exec(out ?? "");
+    return m ? Number(m[1]) * { KiB: 1 / 1024, MiB: 1, GiB: 1024 }[m[2]] : NaN;
+  }
   try {
     const kids = readFileSync(
       `/proc/${app.pid}/task/${app.pid}/children`,
@@ -249,7 +313,8 @@ const FAULTS = [
   ],
   [
     "analyst-one-option",
-    (r) => /Insufficient evidence/.test(r.error ?? ""),
+    // Declining for lack of evidence is a finished "no action needed" result, not an error.
+    (r) => r.verdict === "abstained" && r.flags.includes("nothing_to_fix"),
     "analyst declines",
   ],
   [

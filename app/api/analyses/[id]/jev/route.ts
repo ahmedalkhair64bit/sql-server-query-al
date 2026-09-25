@@ -13,7 +13,7 @@ export async function POST(
     a = getAnalysis(id, u.id);
   if (!a)
     return Response.json({ error: "Analysis not found." }, { status: 404 });
-  if (!a.digest || !a.candidates)
+  if (!a.digest || !a.candidates || a.candidates === "[]")
     return Response.json(
       { error: "This analysis has no saved candidates to judge." },
       { status: 409 },

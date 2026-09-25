@@ -68,8 +68,10 @@
         "missing_index"
       ],
       "correct_fix_types": [
-        "index"
-      ]
+        "index",
+        "ops"
+      ],
+      "why": "Estimated plan: the index is the fix, but capturing the actual plan first (ops) is the safer first action with no runtime evidence."
     },
     {
       "file": "scalar-udf.sqlplan",
@@ -78,8 +80,10 @@
         "scalar_udf"
       ],
       "correct_fix_types": [
-        "rewrite"
-      ]
+        "rewrite",
+        "ops"
+      ],
+      "why": "Inlining the function by hand (rewrite) or enabling scalar UDF inlining (ops, compatibility level 150+) both remove the per-row calls."
     },
     {
       "file": "table-variable.sqlplan",
@@ -186,6 +190,73 @@
       "correct_fix_types": [
         "rewrite",
         "app"
+      ]
+    },
+    {
+      "file": "complex-report.sqlplan",
+      "description": "Month-end report batch: 3 statements; the main one joins 7 tables at DOP 8, runs 48 s with 210 s CPU. A key lookup runs 6.3 million times (the largest own time), the plan was compiled for a different segment and date range, a hash join spills because 1,200 customers were estimated and 480,000 arrived, one thread does 69% of the Orders scan, statistics are stale, and Segment is implicitly converted.",
+      "expect_findings": [
+        "key_lookup",
+        "parameter_sniffing",
+        "tempdb_spill",
+        "row_estimate_error",
+        "parallel_skew",
+        "stale_statistics",
+        "missing_index",
+        "implicit_conversion"
+      ],
+      "correct_fix_types": [
+        "index",
+        "rewrite"
+      ]
+    },
+    {
+      "file": "blocked-select.sqlplan",
+      "description": "A covering-index seek returning 12 rows waited 20.9 s on LCK_M_S: a writer in another session held the lock. The plan is already optimal.",
+      "expect_findings": [
+        "wait_blocking"
+      ],
+      "correct_fix_types": [
+        "ops",
+        "app"
+      ],
+      "why": "Finding the blocker (ops) or shortening the blocking writer's transactions (app) both remove the lock wait; the plan itself needs nothing."
+    },
+    {
+      "file": "orm-parameterization.sqlplan",
+      "description": "An ORM sends the email as nvarchar(4000) against a varchar(256) indexed column: the column is converted, so IX_Customers_Email is scanned (3.2 million rows) instead of sought.",
+      "expect_findings": [
+        "implicit_conversion",
+        "residual_predicate"
+      ],
+      "correct_fix_types": [
+        "app",
+        "rewrite",
+        "schema"
+      ],
+      "why": "Send varchar from the ORM (app), cast the parameter (rewrite), or align the column type (schema, heavier): all remove the conversion."
+    },
+    {
+      "file": "failed-timeout.sqlplan",
+      "description": "Cancelled by a 30 s client timeout: the scan of 240 million Events had read 96 million rows looking for one customer when it stopped. The plan is partial.",
+      "expect_findings": [
+        "incomplete_execution",
+        "residual_predicate"
+      ],
+      "correct_fix_types": [
+        "index"
+      ]
+    },
+    {
+      "file": "insert-archive.sqlplan",
+      "description": "Archiving 4.8 million orders in one INSERT ... SELECT: 96 s, 41 s waiting on WRITELOG, a sort that spills to maintain three nonclustered indexes on the target.",
+      "expect_findings": [
+        "wait_log",
+        "tempdb_spill"
+      ],
+      "correct_fix_types": [
+        "rewrite",
+        "ops"
       ]
     }
   ]

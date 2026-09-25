@@ -76,6 +76,8 @@ export type Digest = {
   actual?: boolean;
   sqlTruncated?: boolean;
   costBasis?: "operator";
+  /** The top operator never reached end of scan: cancelled, timed out or failed. */
+  incompleteExecution?: boolean;
   optimizationLevel?: string | null;
   ceVersion?: number | null;
   dop?: number | null;

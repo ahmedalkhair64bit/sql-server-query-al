@@ -1,10 +1,25 @@
-import { randomBytes, scryptSync, createHash, timingSafeEqual } from "node:crypto";
-import { createUser, userByEmail, userEmail, putSession, sessionUserId, dropSession, getSettings, db } from "./db.ts";
+import {
+  randomBytes,
+  scryptSync,
+  createHash,
+  timingSafeEqual,
+} from "node:crypto";
+import {
+  createUser,
+  userCount,
+  userByEmail,
+  userEmail,
+  putSession,
+  sessionUserId,
+  dropSession,
+  getSettings,
+  db,
+} from "./db.ts";
 
 export const SESSION_COOKIE = "qai_s";
 export const SESSION_DAYS = 30;
 export const emailOk = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
-export const passwordOk = (p: string) => p.length >= 10;   // trust boundary: signup + password change only
+export const passwordOk = (p: string) => p.length >= 10; // trust boundary: signup + password change only
 
 export function hashPassword(pw: string): string {
   const salt = randomBytes(16);
@@ -17,41 +32,69 @@ export function verifyPassword(pw: string, stored: string): boolean {
     const a = scryptSync(pw, Buffer.from(salt, "hex"), 64);
     const b = Buffer.from(hash, "hex");
     return a.length === b.length && timingSafeEqual(a, b);
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
-export const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
+export const hashToken = (t: string) =>
+  createHash("sha256").update(t).digest("hex");
 
-export function signUpNewUser(email: string, password: string): { ok: true; id: string } | { ok: false; error: string } {
+/**
+ * The first account is always allowed (it owns the installation). After that sign-up is closed unless the
+ * operator sets ALLOW_SIGNUP=1: on a reachable server, open sign-up lets anyone make the server call URLs.
+ */
+export const signupOpen = () =>
+  process.env.ALLOW_SIGNUP === "1" || userCount() === 0;
+export const SIGNUP_CLOSED =
+  "Sign-up is closed on this server. Ask its administrator to set ALLOW_SIGNUP=1 while you create your account.";
+
+export function signUpNewUser(
+  email: string,
+  password: string,
+): { ok: true; id: string } | { ok: false; error: string } {
   const e = email.trim().toLowerCase();
   if (!emailOk(e)) return { ok: false, error: "Enter a valid email address." };
-  if (!passwordOk(password)) return { ok: false, error: "Use at least 10 characters." };
-  if (userByEmail(e)) return { ok: false, error: "That email already has an account." };
-  // ponytail: no rate limiting — single-container tool. Add a token bucket before exposing this to a network.
+  if (!passwordOk(password))
+    return { ok: false, error: "Use at least 10 characters." };
+  if (!signupOpen()) return { ok: false, error: SIGNUP_CLOSED };
+  if (userByEmail(e))
+    return { ok: false, error: "That email already has an account." };
   return { ok: true, id: createUser(e, hashPassword(password)) };
 }
 
 // next/headers is imported lazily: `node --test` loads this module to test the crypto above, and the
 // request-scoped binding must not be touched at import time.
 const jar = async () => (await import("next/headers")).cookies();
-const fwdProto = async () => ((await (await import("next/headers")).headers())).get("x-forwarded-proto") ?? "";
+const fwdProto = async () =>
+  (await (await import("next/headers")).headers()).get("x-forwarded-proto") ??
+  "";
 
-export function changeEmail(userId: string, email: string): { ok: true } | { ok: false; error: string } {
+export function changeEmail(
+  userId: string,
+  email: string,
+): { ok: true } | { ok: false; error: string } {
   const e = email.trim().toLowerCase();
   if (!emailOk(e)) return { ok: false, error: "Enter a valid email address." };
   const taken = userByEmail(e);
-  if (taken && taken.id !== userId) return { ok: false, error: "That email already has an account." };
+  if (taken && taken.id !== userId)
+    return { ok: false, error: "That email already has an account." };
   // users.email is UNIQUE: without this check a collision is a 500 inside the settings form.
-  if (!taken) db.prepare("UPDATE users SET email = ? WHERE id = ?").run(e, userId);
+  if (!taken)
+    db.prepare("UPDATE users SET email = ? WHERE id = ?").run(e, userId);
   return { ok: true };
 }
 
 export async function startSession(userId: string) {
   const token = randomBytes(32).toString("hex");
   putSession(hashToken(token), userId, Date.now() + SESSION_DAYS * 864e5);
-  const secure = process.env.COOKIE_SECURE === "1" || (await fwdProto()).includes("https");
+  const secure =
+    process.env.COOKIE_SECURE === "1" || (await fwdProto()).includes("https");
   (await jar()).set(SESSION_COOKIE, token, {
-    httpOnly: true, sameSite: "lax", secure,
-    path: "/", maxAge: SESSION_DAYS * 86400,
+    httpOnly: true,
+    sameSite: "lax",
+    secure,
+    path: "/",
+    maxAge: SESSION_DAYS * 86400,
     // NODE_ENV is the wrong signal here. A production build served over plain http://localhost would set
     // Secure, Safari then refuses to store the cookie at all, and every page after signup looks signed-out.
     // (Chromium accepts Secure on localhost, which is why a chromium-only suite could never see it.)
@@ -69,7 +112,10 @@ export async function endSession() {
   if (t) dropSession(hashToken(t));
   store.delete(SESSION_COOKIE);
 }
-export async function sessionUser(): Promise<{ id: string; email: string } | null> {
+export async function sessionUser(): Promise<{
+  id: string;
+  email: string;
+} | null> {
   const t = (await jar()).get(SESSION_COOKIE)?.value;
   if (!t) return null;
   const id = sessionUserId(hashToken(t));
@@ -78,9 +124,13 @@ export async function sessionUser(): Promise<{ id: string; email: string } | nul
   return row ? { id, email: row.email } : null;
 }
 export async function requireUser(): Promise<{ id: string; email: string }> {
-  const { redirect } = await import("next/navigation");   // lazy for the same reason as jar()
+  const { redirect } = await import("next/navigation"); // lazy for the same reason as jar()
   const u = await sessionUser();
-  if (!u) { redirect("/login"); throw new Error("redirecting to /login"); }  // redirect throws; this only satisfies the type
+  if (!u) {
+    redirect("/login");
+    throw new Error("redirecting to /login");
+  } // redirect throws; this only satisfies the type
   return u;
 }
-export const needsOnboarding = (userId: string) => getSettings(userId)?.onboarded !== 1;
+export const needsOnboarding = (userId: string) =>
+  getSettings(userId)?.onboarded !== 1;

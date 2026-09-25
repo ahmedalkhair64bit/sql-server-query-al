@@ -5,6 +5,7 @@ services:
     ports: ["3000:3000"]
     environment:
       APP_SECRET: ${APP_SECRET:?set APP_SECRET in .env, 16+ chars}
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-}
     volumes: ["qai-data:/data"]
     restart: unless-stopped
 volumes:

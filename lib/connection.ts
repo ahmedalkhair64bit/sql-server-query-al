@@ -1,4 +1,5 @@
 import { noul, type TypeSafeClient } from "@typesafe-ai/sdk";
+import { guardedFetch } from "./egress.ts";
 import { makeJevClient } from "./jev.ts";
 import type { AnalystConfig } from "./settings.ts";
 
@@ -45,7 +46,7 @@ function explain(status: number, body: string, baseUrl: string) {
 /** One tiny chat completion with the exact model and extra params an analysis will use. */
 export async function testAnalyst(
   cfg: AnalystConfig,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = guardedFetch,
 ): Promise<ConnectionStatus> {
   const started = Date.now();
   const done = (

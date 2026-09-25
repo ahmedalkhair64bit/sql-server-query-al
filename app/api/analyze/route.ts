@@ -5,8 +5,13 @@ import {
   jevModel,
   digestForModels,
 } from "@/lib/settings";
-import { proposeCandidates } from "@/lib/analyst";
-import { judgeCandidates, jevFallback, makeJevClient } from "@/lib/jev";
+import { proposeCandidates, AnalystError } from "@/lib/analyst";
+import {
+  judgeCandidates,
+  jevFallback,
+  makeJevClient,
+  nothingToFix,
+} from "@/lib/jev";
 import { sse } from "@/lib/stream";
 import { newAnalysis, patchAnalysis } from "@/lib/db";
 import {
@@ -103,13 +108,35 @@ export async function POST(req: Request) {
           send("stage", { stage: "proposing" });
           // The privacy setting can withhold the statement text from both models.
           const modelDigest = digestForModels(u.id, digest);
-          const candidates = await proposeCandidates(
-            analyst,
-            modelDigest,
-            note,
-            fetch,
-            ac.signal,
-          );
+          let candidates;
+          try {
+            candidates = await proposeCandidates(
+              analyst,
+              modelDigest,
+              note,
+              fetch,
+              ac.signal,
+            );
+          } catch (e) {
+            // The analyst saying there is nothing to fix is a result, not a failure.
+            if (
+              !(e instanceof AnalystError) ||
+              !/^Insufficient evidence/.test(e.message)
+            )
+              throw e;
+            const verdict = nothingToFix(
+              e.message.replace(/^Insufficient evidence:\s*/, ""),
+            );
+            patchAnalysis(id, {
+              candidates: "[]",
+              verdict: JSON.stringify(verdict),
+              status: "done",
+            });
+            send("candidates", []);
+            send("verdict", verdict);
+            send("done", { id });
+            return;
+          }
           patchAnalysis(id, { candidates: JSON.stringify(candidates) });
           send("candidates", candidates);
           if (abandoned) return;

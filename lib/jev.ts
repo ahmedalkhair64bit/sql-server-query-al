@@ -1,7 +1,7 @@
 import { TypeSafeClient, score, noul, choice } from "@typesafe-ai/sdk";
 import { digestForModel, type Digest } from "./digest.ts";
 import type { Candidate } from "./analyst.ts";
-import { parseDdl } from "./sql-check.mjs";
+import { parseDdl, isSystemReadOnly } from "./sql-check.mjs";
 
 export type Dim = "bottleneck_fit" | "semantic_safety" | "ease" | "root_cause";
 export const WEIGHTS: Record<Dim, number> = {
@@ -13,6 +13,9 @@ export const WEIGHTS: Record<Dim, number> = {
 const SAFETY_FLOOR = 0.6;
 const SAFETY_HARD_FLOOR = 0.45;
 const CONFIDENCE_FLOOR = 0.35;
+/** A split pick still needs to be Jev's clear favourite over "collect more evidence". */
+const SPLIT_FLOOR = 0.3;
+const SPLIT_MAX_DECLINE = 0.25;
 
 const BOTTLENECK = [
   "Unrelated to the costly operator or the worst estimate error in the plan.",
@@ -58,6 +61,8 @@ export type Verdict = {
   version?: number;
   jev_pick: string | null;
   jev_confidence: number;
+  /** Why no change is recommended, when the analyst found nothing to fix. */
+  reason?: string;
   /** Jev's probability for each choice, including no_suitable_action: how clear-cut the decision was. */
   jev_probabilities?: Record<string, number>;
   agrees: boolean;
@@ -121,7 +126,9 @@ function rank(
     (s, k) => s + WEIGHTS[k] * dims[k].value,
     0,
   );
-  const confs = Object.values(dims)
+  // Only doubt about fit or safety blocks an option. Measured on the real Jev, uncertainty about *effort*
+  // (how easy an application change is) vetoed a safe, well-supported fix; it is now shown, not blocking.
+  const confs = [dims.bottleneck_fit, dims.semantic_safety]
     .map((d) => d.confidence)
     .filter((x): x is number => x !== null);
   const flags: string[] = [];
@@ -136,6 +143,8 @@ function rank(
     flags.push("verify_semantics");
   if (confs.length && Math.min(...confs) < CONFIDENCE_FLOOR)
     flags.push("low_confidence");
+  if (dims.ease.confidence !== null && dims.ease.confidence < CONFIDENCE_FLOOR)
+    flags.push("effort_uncertain");
   if (c.actions.some((x) => x.requires_change_control))
     flags.push("change_control");
   if (c.rejected_reasons?.length) flags.push("invalid_evidence");
@@ -160,7 +169,18 @@ export function ruleDims(c: Candidate): {
   semantic_safety?: Scored;
   ease?: Scored;
 } {
-  if (!c.sql_to_run || c.rejected_reasons?.length) return {};
+  if (c.rejected_reasons?.length) return {};
+  // Operations and application options that run no SQL against the query (find the blocker, change the
+  // parameter type the app sends) cannot change the rows it returns. Asking Jev "same rows?" about them
+  // produced confidence as low as 0.05 and blocked correct fixes on real runs; answer it by rule instead.
+  // Options with SQL (ALTER DATABASE ... READ_COMMITTED_SNAPSHOT, a rewrite) are still judged by Jev.
+  // A read-only diagnostic against system views (who is blocking, what is waiting) is the same case.
+  if (
+    (c.option_type === "ops" || c.option_type === "app") &&
+    (!c.sql_to_run || isSystemReadOnly(c.sql_to_run))
+  )
+    return { semantic_safety: { score: 3, confidence: null, source: "rule" } };
+  if (!c.sql_to_run) return {};
   const ddl = parseDdl(c.sql_to_run);
   const rolledBack = (c.rollback?.length ?? 0) > 0;
   const safety = {
@@ -231,6 +251,8 @@ export async function judgeCandidates(
   /** The DBA's own note: constraints Jev must weigh, e.g. "no schema changes this week". */
   constraints = "",
 ): Promise<Verdict> {
+  if (!candidates.length)
+    throw new Error("There are no options for Jev to judge.");
   const rules = candidates.map(ruleDims);
   const context: Record<string, string> = constraints.trim()
     ? { constraints: constraints.slice(0, 2000) }
@@ -361,9 +383,25 @@ export async function judgeCandidates(
   const pick = cross.answers.first_to_run;
   const worth = cross.answers.anything_worth_running.noul;
   const valid = eligible.some((c) => c.key === pick.choice);
-  const useJev = valid && pick.confidence >= 0.5 && worth >= 0.5;
+  // A split decision: the pick is under 50% only because other eligible options took the rest, not because
+  // Jev leans towards "collect more evidence". Measured on real runs, this was the most common reason Jev
+  // declined while two good fixes competed (for example index 45% vs recompile 40%).
+  const probs = (pick.probabilities ?? {}) as Record<string, number>;
+  const decline = probs.no_suitable_action ?? 0;
+  const isTop = Object.values(probs).every(
+    (p) => p <= (probs[pick.choice] ?? pick.confidence),
+  );
+  const split =
+    valid &&
+    pick.confidence < 0.5 &&
+    pick.confidence >= SPLIT_FLOOR &&
+    isTop &&
+    decline <= SPLIT_MAX_DECLINE &&
+    worth >= 0.5;
+  const useJev = valid && worth >= 0.5 && (pick.confidence >= 0.5 || split);
   const flags: string[] = [];
-  if (pick.confidence < 0.5) flags.push("low_confidence");
+  if (split) flags.push("split_decision");
+  else if (pick.confidence < 0.5) flags.push("low_confidence");
   if (worth < 0.5) flags.push("nothing_clearly_worthwhile");
   if (!valid) flags.push("no_suitable_action");
   if (failed.size) flags.push("jev_partial");
@@ -413,5 +451,23 @@ export function jevFallback(candidates: Candidate[], why: string): Verdict {
     anything_worth_running: 0,
     weights: WEIGHTS,
     flags: ["jev_unavailable", why.slice(0, 200)],
+  };
+}
+
+// The analyst found nothing worth changing (a healthy plan). Recorded as a finished result, not an error.
+export function nothingToFix(reason: string): Verdict {
+  return {
+    version: 2,
+    status: "abstained",
+    order: [],
+    source: "none",
+    headline: null,
+    jev_pick: null,
+    jev_confidence: 0,
+    agrees: false,
+    anything_worth_running: 0,
+    weights: WEIGHTS,
+    flags: ["nothing_to_fix"],
+    reason: reason.slice(0, 1000),
   };
 }

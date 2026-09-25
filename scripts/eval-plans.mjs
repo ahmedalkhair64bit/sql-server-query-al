@@ -76,7 +76,9 @@ const analyst = {
 };
 const jevKey = env("JEV_API_KEY");
 
-const { parsePlanText } = await import("../lib/plan-parser.mjs");
+const { parsePlanText, recommendStatement } =
+  await import("../lib/plan-parser.mjs");
+const { decodeBytes } = await import("../lib/plan-decoder.mjs");
 const { proposeCandidates } = await import("../lib/analyst.ts");
 const { judgeCandidates, makeJevClient } = await import("../lib/jev.ts");
 
@@ -84,47 +86,93 @@ const suites = ["fixtures/eval", "fixtures/eval/private"].filter((dir) =>
   existsSync(join(dir, "cases.json")),
 );
 const results = [];
-for (const dir of suites)
-  for (const c of JSON.parse(readFileSync(join(dir, "cases.json"), "utf8"))
-    .cases) {
-    const started = Date.now();
-    const row = { case: join(dir, c.file), expected: c.correct_fix_types };
-    try {
-      const digest = parsePlanText(readFileSync(join(dir, c.file), "utf8"))[0];
-      const candidates = await proposeCandidates(analyst, digest, c.note ?? "");
-      const verdict = await judgeCandidates(
-        digest,
-        candidates,
-        makeJevClient(jevKey, process.env.JEV_MODEL),
-      );
-      const picked = candidates.find((x) => x.key === verdict.headline);
-      row.proposed = candidates.map((x) => x.option_type);
-      row.rejected = candidates.filter((x) => x.rejected_reasons.length).length;
-      row.picked = picked?.option_type ?? null;
-      row.confidence = verdict.jev_confidence;
-      row.proposedCorrect = candidates.some(
-        (x) =>
-          c.correct_fix_types.includes(x.option_type) &&
-          !x.rejected_reasons.length,
-      );
-      row.pass = c.correct_fix_types.length
-        ? c.correct_fix_types.includes(row.picked)
-        : row.picked === null;
-    } catch (e) {
-      // The analyst declining for lack of evidence is the right answer on a healthy plan.
-      row.error = e.message.slice(0, 160);
-      row.pass =
-        !c.correct_fix_types.length &&
-        /Insufficient evidence|at least 2/.test(e.message);
-    }
-    row.seconds = Math.round((Date.now() - started) / 1000);
-    results.push(row);
-    if (!args.includes("--json"))
-      console.log(
-        `${row.pass ? "PASS" : "FAIL"}  ${row.case.padEnd(48)} picked=${row.picked ?? "none"} ` +
-          `expected=${c.correct_fix_types.join("|") || "decline"}${row.error ? `  (${row.error})` : ""}`,
-      );
+// --concurrency N runs N plans at once: reasoning models can take minutes per plan.
+const concurrency = args.includes("--concurrency")
+  ? Number(args[args.indexOf("--concurrency") + 1])
+  : 1;
+const only = args.includes("--only")
+  ? args[args.indexOf("--only") + 1].split(",")
+  : null;
+const jobs = suites.flatMap((dir) =>
+  JSON.parse(readFileSync(join(dir, "cases.json"), "utf8"))
+    .cases.filter((c) => !only || only.includes(c.file))
+    .map((c) => ({
+      dir,
+      c,
+    })),
+);
+async function runCase({ dir, c }) {
+  const started = Date.now();
+  const row = { case: join(dir, c.file), expected: c.correct_fix_types };
+  try {
+    const digest = recommendStatement(
+      parsePlanText(decodeBytes(readFileSync(join(dir, c.file)))),
+    );
+    const candidates = await proposeCandidates(analyst, digest, c.note ?? "");
+    const verdict = await judgeCandidates(
+      digest,
+      candidates,
+      makeJevClient(jevKey, process.env.JEV_MODEL),
+      undefined,
+      c.note ?? "",
+    );
+    const picked = candidates.find((x) => x.key === verdict.headline);
+    row.proposed = candidates.map((x) => x.option_type);
+    row.options = candidates.map(
+      (x) =>
+        `${x.key} [${x.option_type}]${x.rejected_reasons.length ? " REJECTED: " + x.rejected_reasons[0] : ""}`,
+    );
+    row.rejected = candidates.filter((x) => x.rejected_reasons.length).length;
+    row.picked = picked?.option_type ?? null;
+    row.pickedTitle = picked?.title ?? null;
+    row.confidence = verdict.jev_confidence;
+    row.flags = verdict.flags;
+    row.probabilities = verdict.jev_probabilities;
+    row.detail = verdict.order.map((r) => ({
+      key: r.key,
+      type: candidates.find((x) => x.key === r.key)?.option_type,
+      support: r.evidence_support,
+      opsafe: r.operational_safety,
+      dims: Object.fromEntries(
+        Object.entries(r.dims).map(([k, d]) => [
+          k,
+          `${d.value.toFixed(2)}${d.confidence == null ? "" : ` c${d.confidence.toFixed(2)}`}${d.source ? " rule" : ""}`,
+        ]),
+      ),
+    }));
+    row.judged = verdict.order.map(
+      (r) =>
+        `${r.key}:${r.composite.toFixed(2)}${r.flags.length ? `[${r.flags.join(",")}]` : ""}`,
+    );
+    row.proposedCorrect = candidates.some(
+      (x) =>
+        c.correct_fix_types.includes(x.option_type) &&
+        !x.rejected_reasons.length,
+    );
+    row.pass = c.correct_fix_types.length
+      ? c.correct_fix_types.includes(row.picked)
+      : row.picked === null;
+  } catch (e) {
+    // The analyst declining for lack of evidence is the right answer on a healthy plan.
+    row.error = e.message.slice(0, 200);
+    row.pass =
+      !c.correct_fix_types.length &&
+      /Insufficient evidence|at least 2/.test(e.message);
   }
+  row.seconds = Math.round((Date.now() - started) / 1000);
+  results.push(row);
+  if (!args.includes("--json"))
+    console.log(
+      `${row.pass ? "PASS" : "FAIL"}  ${row.case.padEnd(48)} picked=${row.picked ?? "none"} ` +
+        `expected=${c.correct_fix_types.join("|") || "decline"}  ${row.seconds}s${row.error ? `  (${row.error})` : ""}`,
+    );
+}
+const queue = [...jobs];
+await Promise.all(
+  Array.from({ length: Math.max(1, concurrency) }, async () => {
+    while (queue.length) await runCase(queue.shift());
+  }),
+);
 const pass = results.filter((r) => r.pass).length;
 const withFix = results.filter((r) => r.expected.length);
 const summary = {

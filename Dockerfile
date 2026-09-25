@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
  && mkdir -p /data && chown node:node /data
 COPY --from=build --chown=node:node /app/.next ./.next
 COPY --from=build --chown=node:node /app/public ./public
-COPY --from=build --chown=node:node /app/lib/plan-*.mjs ./lib/
+COPY --from=build --chown=node:node /app/lib/*.mjs ./lib/
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/package.json ./package.json
 COPY --from=build --chown=node:node /app/next.config.* ./

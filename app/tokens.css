@@ -1,20 +1,25 @@
+/* Hallmark · genre: modern-minimal · theme: cobalt · design-system: design.md */
 :root {
   color-scheme: light;
-  --qai-paper: #fcfdff;
-  --qai-paper-2: #f3f6fa;
-  --qai-paper-3: #eaf0f7;
-  --qai-ink: #102541;
-  --qai-ink-muted: #5c6e83;
-  --qai-accent: #1266d6;
-  --qai-on-accent: #fff;
-  --qai-warn: #886016;
-  --qai-danger: #bc3545;
-  --qai-info: #1266d6;
-  --qai-rule: #dce4ef;
-  --qai-focus: #1775e8;
-  --qai-teal: #007c85;
-  --qai-font-display: "Outfit", system-ui, sans-serif;
-  --qai-font-body: "Outfit", system-ui, sans-serif;
+  --qai-paper: oklch(98.5% 0.004 250);
+  --qai-paper-2: oklch(96.5% 0.005 252);
+  --qai-paper-3: oklch(94% 0.006 254);
+  --qai-ink: oklch(24% 0.02 258);
+  --qai-ink-muted: oklch(50% 0.015 256);
+  --qai-accent: oklch(55% 0.2 256);
+  --qai-on-accent: oklch(99% 0.004 256);
+  --qai-warn: oklch(52% 0.11 75);
+  --qai-danger: oklch(52% 0.19 22);
+  --qai-info: oklch(55% 0.2 256);
+  --qai-rule: oklch(90% 0.008 255);
+  --qai-rule-2: oklch(83% 0.011 255);
+  --qai-focus: oklch(55% 0.2 256);
+  --qai-teal: oklch(52% 0.1 190);
+  --qai-graphite: oklch(23% 0.018 260);
+  --qai-graphite-ink: oklch(92% 0.01 255);
+  --qai-font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --qai-font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --qai-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --qai-space-xs: 4px;
   --qai-space-s: 8px;
   --qai-space-md: 12px;
@@ -32,34 +37,40 @@
   --qai-ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
   --qai-dur-1: 150ms;
   --qai-dur-2: 220ms;
-  --qai-radius: 12px;
+  --qai-radius: 10px;
+  --qai-radius-control: 6px;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --qai-paper: #101823;
-  --qai-paper-2: #151f2d;
-  --qai-paper-3: #202e40;
-  --qai-ink: #e7effb;
-  --qai-ink-muted: #a2b2c8;
-  --qai-accent: #68aaff;
-  --qai-on-accent: #0a203b;
-  --qai-rule: #2b394c;
-  --qai-teal: #62d3ca;
-  --qai-danger: #ff8d98;
-  --qai-warn: #e5c078;
-  --qai-info: #85b8ff;
+  --qai-paper: oklch(19% 0.014 258);
+  --qai-paper-2: oklch(22% 0.015 258);
+  --qai-paper-3: oklch(27% 0.016 258);
+  --qai-ink: oklch(95% 0.008 255);
+  --qai-ink-muted: oklch(72% 0.014 255);
+  --qai-accent: oklch(72% 0.15 255);
+  --qai-on-accent: oklch(18% 0.03 258);
+  --qai-rule: oklch(32% 0.016 258);
+  --qai-rule-2: oklch(40% 0.018 258);
+  --qai-focus: oklch(72% 0.15 255);
+  --qai-teal: oklch(78% 0.1 185);
+  --qai-danger: oklch(74% 0.14 20);
+  --qai-warn: oklch(82% 0.12 80);
+  --qai-info: oklch(72% 0.15 255);
+  --qai-graphite: oklch(15% 0.014 260);
 }
 @media print {
   :root,
   :root[data-theme="dark"] {
     color-scheme: light;
-    --qai-paper: #fff;
-    --qai-paper-2: #f5f7fa;
-    --qai-paper-3: #eaf0f7;
-    --qai-ink: #102541;
-    --qai-ink-muted: #475569;
-    --qai-accent: #1266d6;
-    --qai-rule: #ccd5df;
-    --qai-danger: #a31a2d;
+    --qai-paper: oklch(100% 0 0);
+    --qai-paper-2: oklch(97% 0.004 252);
+    --qai-paper-3: oklch(94% 0.006 254);
+    --qai-ink: oklch(24% 0.02 258);
+    --qai-ink-muted: oklch(42% 0.015 256);
+    --qai-accent: oklch(50% 0.2 256);
+    --qai-rule: oklch(86% 0.008 255);
+    --qai-danger: oklch(45% 0.18 22);
+    --qai-graphite: oklch(96% 0.005 252);
+    --qai-graphite-ink: oklch(24% 0.02 258);
   }
 }

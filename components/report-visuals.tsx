@@ -1,14 +1,9 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
 import type { Candidate } from "@/lib/analyst";
 import type { Digest } from "@/lib/digest";
 import type { Verdict } from "@/lib/jev";
 
-const reduced = () =>
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-/** A number that counts up once when it first appears (static under reduced motion). */
+/** A formatted number. Reports are read, not watched: values render final, with no count-up. */
 export function CountUp({
   value,
   decimals = 0,
@@ -18,24 +13,9 @@ export function CountUp({
   decimals?: number;
   suffix?: string;
 }) {
-  const [shown, setShown] = useState(value);
-  const first = useRef(true);
-  useEffect(() => {
-    if (!first.current || reduced()) return;
-    first.current = false;
-    let raf = 0;
-    const start = performance.now();
-    const tick = (t: number) => {
-      const k = Math.min(1, (t - start) / 700);
-      setShown(value * (1 - Math.pow(1 - k, 3)));
-      if (k < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [value]);
   return (
     <>
-      {shown.toLocaleString(undefined, {
+      {value.toLocaleString(undefined, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
       })}
@@ -82,12 +62,26 @@ export function ConfidenceRing({
 
 const FLAG_TEXT: Record<string, string> = {
   low_confidence: "Jev was not confident enough in any single option.",
+  split_decision:
+    "Jev's weight was split between good options; this is its favourite.",
   nothing_clearly_worthwhile:
     "Jev judged that no option is clearly worth running on this evidence.",
   no_suitable_action: "Every option failed a safety, evidence or fit check.",
   jev_partial: "Jev could not review every option; retry to include them.",
   jev_unavailable: "Jev could not be reached, so nothing was selected.",
 };
+
+/** "45% vs 40%": Jev's pick against the runner-up, for a decision split between two good options. */
+function closeCall(verdict: Verdict) {
+  const probs = Object.entries(verdict.jev_probabilities ?? {}).sort(
+    (a, b) => b[1] - a[1],
+  );
+  const pick = probs.find(([k]) => k === verdict.headline)?.[1];
+  const next = probs.find(([k]) => k !== verdict.headline)?.[1];
+  return pick != null && next != null
+    ? `${Math.round(pick * 100)}% vs ${Math.round(next * 100)}% for the next option`
+    : "two options were nearly tied";
+}
 
 /** How Jev weighed each choice. Bars share one hue; the pick is marked by label and weight, not colour alone. */
 export function ProbabilityBars({
@@ -168,27 +162,33 @@ export function JevDecision({
     ),
   ).length;
   const reasons = verdict.flags.map((f) => FLAG_TEXT[f]).filter(Boolean);
+  const healthy = verdict.flags.includes("nothing_to_fix");
   const state = selected
     ? "chosen"
-    : verdict.status === "unavailable"
-      ? "unavailable"
-      : "abstained";
+    : healthy
+      ? "healthy"
+      : verdict.status === "unavailable"
+        ? "unavailable"
+        : "abstained";
   return (
     <section className={`decision-hero ${state}`} data-verdict>
       <div className="decision-main">
         <p className="decision-eyebrow">
-          <span className="eyebrow-dot" aria-hidden="true" />
           {selected
             ? "Jev's recommended first action"
-            : state === "unavailable"
-              ? "Jev did not answer"
-              : "Jev declined to pick an action"}
+            : state === "healthy"
+              ? "No action needed"
+              : state === "unavailable"
+                ? "Jev did not answer"
+                : "Jev declined to pick an action"}
         </p>
         <h2>
           {selected?.title ??
-            (state === "unavailable"
-              ? "Decision engine unavailable"
-              : "More evidence is needed")}
+            (state === "healthy"
+              ? "No change recommended for this plan"
+              : state === "unavailable"
+                ? "Decision engine unavailable"
+                : "More evidence is needed")}
         </h2>
         <p className="decision-lead">
           {selected ? (
@@ -196,6 +196,9 @@ export function JevDecision({
               <strong>Expected effect: </strong>
               {selected.expected}
             </>
+          ) : state === "healthy" ? (
+            (verdict.reason ??
+            "The analyst found no performance problem worth changing.")
           ) : (
             (reasons[0] ??
             "The alternatives below are not approved recommendations. Review the evidence, add context, or retry Jev.")
@@ -209,6 +212,9 @@ export function JevDecision({
             <li>
               <strong>{judged - blocked}</strong> passed every check
             </li>
+            {selected && verdict.flags.includes("split_decision") && (
+              <li data-split>Close call: {closeCall(verdict)}</li>
+            )}
             {selected && (
               <li>
                 {verdict.agrees
@@ -219,7 +225,7 @@ export function JevDecision({
           </ul>
         )}
         <div className="decision-actions no-print">
-          {onRetry && (
+          {onRetry && !healthy && (
             <button className="btn" onClick={onRetry} disabled={busy}>
               {busy ? "Jev is reviewing…" : "Retry Jev"}
             </button>
@@ -340,11 +346,13 @@ export function FindingCards({
     <ul className="finding-grid" data-findings>
       {findings.map((f, i) => (
         <li key={i} className="finding-card" data-severity={f.severity}>
-          <span className="finding-icon" aria-hidden="true">
-            {SEVERITY[f.severity].icon}
+          <span className="finding-sevcol">
+            <span className="finding-icon" aria-hidden="true">
+              {SEVERITY[f.severity].icon}
+            </span>
+            {SEVERITY[f.severity].label}
           </span>
           <div>
-            <span className="finding-sev">{SEVERITY[f.severity].label}</span>
             <strong>{f.title}</strong>
             <p>{f.detail}</p>
           </div>
