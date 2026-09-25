@@ -7,7 +7,6 @@
 import {
   mkdirSync,
   rmSync,
-  writeFileSync,
   readFileSync,
   readdirSync,
   createWriteStream,
