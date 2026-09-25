@@ -325,7 +325,7 @@ test("a cut-off JSON answer is reported as cut off, not as prose", async () => {
   );
 });
 
-test("a cut-off answer is retried once with twice the response limit", async () => {
+test("a cut-off answer is retried once with a larger response limit", async () => {
   const { proposeCandidates } = await import("../lib/analyst.ts");
   const limits: number[] = [];
   const good = JSON.stringify({ candidates: CANDS.candidates });
@@ -360,6 +360,32 @@ test("a cut-off answer is retried once with twice the response limit", async () 
     )) as unknown as typeof fetch;
   await assert.rejects(
     () => proposeCandidates(cfg, digest, "", always),
-    /spent its whole response budget reasoning/,
+    /spent its whole response budget \(32,000 tokens\) reasoning/,
   );
+});
+
+test("the default limit retries at 32,000; a model that rejects it still gets the cut-off message", async () => {
+  const { proposeCandidates } = await import("../lib/analyst.ts");
+  const limits: number[] = [];
+  const fake = (async (_u: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body));
+    limits.push(body.max_tokens);
+    if (body.max_tokens > 16384)
+      return new Response(
+        JSON.stringify({ error: { message: "max_tokens is too large" } }),
+        { status: 400 },
+      );
+    return new Response(
+      JSON.stringify({
+        choices: [
+          { message: { content: '{"candidates": [' }, finish_reason: "length" },
+        ],
+      }),
+    );
+  }) as unknown as typeof fetch;
+  await assert.rejects(
+    () => proposeCandidates({ ...cfg, extra: {} }, digest, "", fake),
+    /cut off at the response-length limit \(4,096 tokens\)/,
+  );
+  assert.deepEqual(limits, [4096, 32000]);
 });

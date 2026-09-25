@@ -150,7 +150,8 @@ export async function proposeCandidates(
 ): Promise<Candidate[]> {
   // Reasoning models (DeepSeek, Qwen3, o-series) spend part of max_tokens thinking; a long think can leave
   // the answer cut off or empty. Measured on DeepSeek V4-Pro: 13,000 of 14,700 output tokens were reasoning.
-  // A cut-off answer is retried once with twice the ceiling before it is reported.
+  // A cut-off answer is retried once with at least 32,000 (or twice the ceiling) before it is reported:
+  // doubling the 4,096 default gave 8,192, still too small, and users saw "cut off" on real DeepSeek runs.
   const ceiling = Number(cfg.extra.max_tokens ?? 4096);
   const call = async (maxTokens: number) => {
     const res = await fetchImpl(`${cfg.baseUrl}/chat/completions`, {
@@ -197,13 +198,22 @@ export async function proposeCandidates(
     };
   };
   let { content, cutOff } = await call(ceiling);
-  if (cutOff && ceiling < 65536)
-    ({ content, cutOff } = await call(Math.min(ceiling * 2, 65536)));
+  let tried = ceiling;
+  if (cutOff && ceiling < 65536) {
+    const retry = Math.min(Math.max(ceiling * 2, 32000), 65536);
+    try {
+      ({ content, cutOff } = await call(retry));
+      tried = retry;
+    } catch (e) {
+      // A model with a lower output cap rejects the larger limit (HTTP 400/422): report the cut-off instead.
+      if (!/HTTP 4(00|22)\b/.test((e as Error).message)) throw e;
+    }
+  }
   if (cutOff)
     throw new AnalystError(
       content.trim()
-        ? `The analyst model's answer was cut off at the response-length limit. Raise the maximum response length in Settings.`
-        : `The analyst model spent its whole response budget reasoning and returned no answer. Raise the maximum response length in Settings (reasoning models need 32,000 or more).`,
+        ? `The analyst model's answer was cut off at the response-length limit (${tried.toLocaleString("en-US")} tokens). Raise the maximum response length in Settings; reasoning models such as DeepSeek need 32,000 or more.`
+        : `The analyst model spent its whole response budget (${tried.toLocaleString("en-US")} tokens) reasoning and returned no answer. Raise the maximum response length in Settings (reasoning models need 32,000 or more).`,
     );
   if (!content.trim())
     throw new AnalystError("The analyst model returned an empty answer.");

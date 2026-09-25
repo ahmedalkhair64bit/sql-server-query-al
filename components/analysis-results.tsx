@@ -1,8 +1,5 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useGSAP } from "@gsap/react";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 import type { Candidate } from "@/lib/analyst";
 import type { Digest } from "@/lib/digest";
 import type { Verdict } from "@/lib/jev";
@@ -17,7 +14,6 @@ import {
   FindingCards,
   TimeBars,
 } from "./report-visuals";
-gsap.registerPlugin(useGSAP, ScrollTrigger);
 const labels: Record<string, string> = {
   bottleneck_fit: "Bottleneck fit",
   semantic_safety: "Semantic safety",
@@ -66,46 +62,6 @@ export function AnalysisResults({
       window.removeEventListener("afterprint", after);
     };
   }, []);
-  useGSAP(
-    () => {
-      const mm = gsap.matchMedia();
-      mm.add("(prefers-reduced-motion: no-preference)", () => {
-        gsap.from(".decision-hero", {
-          y: 16,
-          opacity: 0,
-          duration: 0.45,
-          ease: "power2.out",
-        });
-        gsap.from(".kpi", {
-          y: 10,
-          opacity: 0,
-          duration: 0.4,
-          stagger: 0.05,
-          delay: 0.1,
-        });
-        ScrollTrigger.batch(".finding-card", {
-          onEnter: (els) =>
-            gsap.fromTo(
-              els,
-              { y: 10, opacity: 0 },
-              { y: 0, opacity: 1, stagger: 0.05, duration: 0.35 },
-            ),
-          once: true,
-        });
-        ScrollTrigger.batch(".option-card", {
-          onEnter: (els) =>
-            gsap.fromTo(
-              els,
-              { y: 12, opacity: 0.4 },
-              { y: 0, opacity: 1, stagger: 0.06, duration: 0.35 },
-            ),
-          once: true,
-        });
-      });
-      return () => mm.revert();
-    },
-    { scope: root, dependencies: [candidates.length, verdict?.status] },
-  );
   const selected =
     verdict?.source === "jev"
       ? candidates.find((c) => c.key === verdict.headline)
