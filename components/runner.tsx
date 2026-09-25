@@ -150,8 +150,13 @@ export function Runner() {
       if (!r.ok || !r.body)
         throw new Error((await r.json()).error ?? "Analysis failed.");
       let complete = false;
+      let created: string | undefined;
       for await (const e of readSse(r.body)) {
-        if (e.event === "created") setId(e.data.id);
+        if (e.event === "created") {
+          created = e.data.id;
+          setId(created);
+          router.refresh(); // show it in history now: it keeps running if you leave this page
+        }
         if (e.event === "stage") setStage(e.data.stage);
         if (e.event === "digest") setDigest(e.data);
         if (e.event === "candidates") setCandidates(e.data);
@@ -164,10 +169,13 @@ export function Runner() {
           router.refresh();
         }
       }
+      // The run continues on the server; if only this connection dropped, follow it on its report page.
+      if (!complete && !ac.signal.aborted && created) {
+        router.push(`/app/${created}`);
+        return;
+      }
       if (!complete && !ac.signal.aborted)
-        throw new Error(
-          "The connection ended before analysis completed. Check the saved analysis in history.",
-        );
+        throw new Error("The connection ended before the analysis started.");
     } catch (e) {
       if (ac.signal.aborted) return;
       // The server refuses a third concurrent upload without reading its body, so the browser can see
@@ -181,7 +189,15 @@ export function Runner() {
       setStage(null);
     }
   }
-  function cancel() {
+  // Stop asks the server to stop the run; its report then says so and offers Run again. Leaving the page
+  // does not stop anything.
+  async function cancel() {
+    if (id) {
+      await fetch(`/api/analyses/${id}/stop`, { method: "POST" }).catch(
+        () => null,
+      );
+      return; // the stream ends with the stopped result and opens its report
+    }
     abort.current?.abort();
     setStage(null);
     setError("Stopped. You can retry when ready.");

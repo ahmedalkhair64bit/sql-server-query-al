@@ -25,12 +25,19 @@ const STEPS = [
 ] as const;
 
 // The live view of a run: which stage is running, what is done, and how long it has taken.
-export function PipelineProgress({ stage }: { stage: string }) {
+export function PipelineProgress({
+  stage,
+  startedAt,
+}: {
+  stage: string;
+  /** When the run began on the server, for a page opened after it started. */
+  startedAt?: number;
+}) {
   const index = Math.max(
     0,
     STEPS.findIndex((s) => s.key === stage),
   );
-  const [started] = useState(() => Date.now());
+  const [started] = useState(() => startedAt ?? Date.now());
   const [now, setNow] = useState(started);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 250);

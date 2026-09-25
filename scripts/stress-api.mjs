@@ -1,6 +1,7 @@
 // End-to-end stress test of the analysis pipeline against the built app and the controlled providers:
 // concurrent analyses, concurrent large uploads, provider faults (HTTP 500, prose, truncated JSON, too few
-// options, Jev down, Jev hanging), client disconnects and double-clicked "Retry Jev".
+// options, Jev down, Jev hanging), client disconnects (the run continues), stop and Run again, and a
+// double-clicked "Retry Jev".
 //
 //   npm run build && npm run stress:api [-- --concurrency 20]
 //   docker build -t qai:test . && npm run stress:api -- --docker qai:test
@@ -34,6 +35,8 @@ const env = {
   DATA_DIR: DATA,
   APP_SECRET: SECRET,
   TYPESAFE_BASE_URL: "http://127.0.0.1:18889",
+  // Scenario 1 measures load from 20 parallel runs; the per-user limit is checked on its own below.
+  MAX_RUNS_PER_USER: String(Math.max(CONCURRENCY, 5)),
 };
 
 const procs = [];
@@ -97,6 +100,8 @@ const app = IMAGE
       `APP_SECRET=${SECRET}`,
       "-e",
       `TYPESAFE_BASE_URL=${env.TYPESAFE_BASE_URL}`,
+      "-e",
+      `MAX_RUNS_PER_USER=${env.MAX_RUNS_PER_USER}`,
       IMAGE,
     ])
   : start("npx", ["next", "start", "-p", String(PORT)]);
@@ -337,19 +342,61 @@ for (const [fault, ok, label] of FAULTS) {
   );
 }
 
-// 4. Client disconnects mid-analysis: the run is marked abandoned, not left "running".
+// 4. Client disconnects mid-analysis: the run belongs to the server and still finishes. Then an explicit
+// stop ends a run as "stopped", and "Run again" completes it from the stored evidence (no upload).
 {
+  const latest = () =>
+    db.db
+      .prepare(
+        "SELECT id, status FROM analyses WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+      )
+      .get(user);
+  const until = async (id, want, ms = 60_000) => {
+    const end = Date.now() + ms;
+    let row;
+    while (Date.now() < end) {
+      row = db.db.prepare("SELECT status FROM analyses WHERE id = ?").get(id);
+      if (want.includes(row?.status)) break;
+      await new Promise((res) => setTimeout(res, 250));
+    }
+    return row?.status;
+  };
   const r = await analyze(plan, "qa slow", { abortAfterMs: 1500 });
-  await new Promise((res) => setTimeout(res, 1500));
-  const row = db.db
-    .prepare(
-      "SELECT status FROM analyses WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
-    )
-    .get(user);
+  const left = latest();
+  const finished = await until(left.id, ["done"]);
   check(
     "client disconnects mid-analysis",
-    r.aborted && row?.status === "abandoned",
-    `stored status "${row?.status}"`,
+    r.aborted && finished === "done",
+    `the page left; the run ended "${finished}"`,
+  );
+
+  const post = (path) =>
+    fetch(`${BASE}${path}`, { method: "POST", headers: { cookie } });
+  const r2 = analyze(plan, "qa slow");
+  let running;
+  for (let i = 0; i < 40 && !running; i++) {
+    await new Promise((res) => setTimeout(res, 100));
+    const row = latest();
+    if (row && row.id !== left.id && row.status === "running") running = row;
+  }
+  const stop = running ? await post(`/api/analyses/${running.id}/stop`) : null;
+  const stopped = running
+    ? await until(running.id, ["stopped", "done", "failed"])
+    : null;
+  await r2;
+  const again = running
+    ? await post(`/api/analyses/${running.id}/rerun`)
+    : null;
+  const rerun = running
+    ? await until(running.id, ["done", "failed", "stopped"])
+    : null;
+  check(
+    "explicit stop, then Run again",
+    stop?.status === 200 &&
+      stopped === "stopped" &&
+      again?.status === 200 &&
+      rerun === "done",
+    `stop ${stop?.status} -> "${stopped}", rerun ${again?.status} -> "${rerun}"`,
   );
 }
 

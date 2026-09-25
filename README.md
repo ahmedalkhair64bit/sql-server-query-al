@@ -136,17 +136,17 @@ docker compose up -d --build
 
 After signing up, the setup guide walks through three steps: what the app does, connecting both models, and a check that both actually answer. You can change everything later under **Settings → Models**. Each user has their own saved configuration.
 
-| Field | What to enter |
-| --- | --- |
-| Provider | OpenAI, Azure OpenAI, Google Gemini, OpenRouter, Ollama, vLLM, or any other OpenAI-compatible API. Choosing one fills in the base URL. |
-| Base URL | The API root, usually ending in `/v1`. It must be reachable from inside the container. |
-| API key | Your provider key. For a local endpoint without authentication, enter any text, such as `EMPTY`. |
-| Model | The exact model ID (for Azure, the deployment name). **Test analyst connection** lists the models your key can use. |
-| Reasoning model switch | Turn on for Qwen3, DeepSeek-R1 and similar models served by vLLM or SGLang; otherwise the answer arrives empty. |
-| Maximum response length | Leave empty for 4,096 tokens; raise it if answers are cut off. |
-| Advanced request parameters | Optional JSON merged into every analyst request, such as `{"temperature":0.2}`. |
-| TypeSafe API key | Your Jev key from [TypeSafe Console](https://console.typesafe.ai/keys). |
-| Jev model | `jev-latest` unless you need a pinned version. |
+| Field                       | What to enter                                                                                                                          |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider                    | OpenAI, Azure OpenAI, Google Gemini, OpenRouter, Ollama, vLLM, or any other OpenAI-compatible API. Choosing one fills in the base URL. |
+| Base URL                    | The API root, usually ending in `/v1`. It must be reachable from inside the container.                                                 |
+| API key                     | Your provider key. For a local endpoint without authentication, enter any text, such as `EMPTY`.                                       |
+| Model                       | The exact model ID (for Azure, the deployment name). **Test analyst connection** lists the models your key can use.                    |
+| Reasoning model switch      | Turn on for Qwen3, DeepSeek-R1 and similar models served by vLLM or SGLang; otherwise the answer arrives empty.                        |
+| Maximum response length     | Leave empty for 4,096 tokens; raise it if answers are cut off.                                                                         |
+| Advanced request parameters | Optional JSON merged into every analyst request, such as `{"temperature":0.2}`.                                                        |
+| TypeSafe API key            | Your Jev key from [TypeSafe Console](https://console.typesafe.ai/keys).                                                                |
+| Jev model                   | `jev-latest` unless you need a pinned version.                                                                                         |
 
 Use the **Test** buttons before saving: each sends one tiny request and reports the real error (rejected key, unknown model, unreachable URL, timeout). The header shows **Models connected** only when both passed a test of the current settings. Inside a container, `localhost` refers to that container, not your host machine: use a reachable hostname, or `host.docker.internal` for services on the Docker host.
 
@@ -165,16 +165,18 @@ Saved keys are never shown again. **Leaving a key field empty keeps the saved ke
 5. Select **Analyse plan** and review the evidence, alternatives, and Jev decision.
 6. Check prerequisites, validate the proposed SQL in your environment, and keep the rollback guidance available.
 
-You can stop a running analysis, reopen saved reports, rename or delete history entries, copy SQL, and use **Export to PDF** through your browser's print dialog.
+An analysis runs on the server, not in your browser tab: you can open Settings or another report while it runs, and its report fills in when it finishes (open it from history to watch its progress). **Stop analysis** ends a run on purpose; **Run again** restarts a stopped, failed or interrupted analysis from the same plan and note, with no new upload.
+
+You can also reopen saved reports, rename or delete history entries, copy SQL, and use **Export to PDF** through your browser's print dialog.
 
 ## Your data and credentials
 
-| Data | Where it goes |
-| --- | --- |
-| Accounts, sessions, and saved reports | SQLite in your data volume. |
-| Uploaded XML and statement indexes | Files under `/data/plans` in Docker. |
-| Provider API keys | Encrypted with AES-256-GCM in SQLite using your runtime `APP_SECRET`. |
-| Model input | Bounded evidence, SQL text, object names, and your context note sent to the configured analyst and Jev services. |
+| Data                                  | Where it goes                                                                                                    |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Accounts, sessions, and saved reports | SQLite in your data volume.                                                                                      |
+| Uploaded XML and statement indexes    | Files under `/data/plans` in Docker.                                                                             |
+| Provider API keys                     | Encrypted with AES-256-GCM in SQLite using your runtime `APP_SECRET`.                                            |
+| Model input                           | Bounded evidence, SQL text, object names, and your context note sent to the configured analyst and Jev services. |
 
 **Bounded does not mean anonymized.** Plan evidence and SQL can contain sensitive schema names, literals, or business context. Use providers appropriate for your data. The original XML file is not sent wholesale to the models.
 
@@ -205,14 +207,15 @@ Do not use `docker compose down -v` unless you intend to delete the application'
 
 ## Configuration reference
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `APP_SECRET` | Required | At least 16 characters; use a strong randomly generated value. |
-| `DATA_DIR` | `./data` locally; `/data` in Docker | Database, uploads, and statement indexes. |
-| `PORT` | `3000` | Application listening port. |
-| `ALLOW_SIGNUP` | Unset | Set to `1` to let more people create accounts. Without it, only the first account can sign up. |
-| `COOKIE_SECURE` | Unset | Set to `1` for direct HTTPS if the proxy does not supply `X-Forwarded-Proto`. Leave unset for plain local HTTP. |
-| `QAI_IMAGE` | Published `20260922` tag | Compose image selection; not an application setting. |
+| Variable            | Default                             | Purpose                                                                                                         |
+| ------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `APP_SECRET`        | Required                            | At least 16 characters; use a strong randomly generated value.                                                  |
+| `DATA_DIR`          | `./data` locally; `/data` in Docker | Database, uploads, and statement indexes.                                                                       |
+| `PORT`              | `3000`                              | Application listening port.                                                                                     |
+| `ALLOW_SIGNUP`      | Unset                               | Set to `1` to let more people create accounts. Without it, only the first account can sign up.                  |
+| `MAX_RUNS_PER_USER` | `5`                                 | Analyses one user can have running at once. Runs continue on the server when the page is closed.                |
+| `COOKIE_SECURE`     | Unset                               | Set to `1` for direct HTTPS if the proxy does not supply `X-Forwarded-Proto`. Leave unset for plain local HTTP. |
+| `QAI_IMAGE`         | Published `20260922` tag            | Compose image selection; not an application setting.                                                            |
 
 ## Supported plans and limits
 
