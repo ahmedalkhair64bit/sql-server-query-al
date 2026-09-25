@@ -36,6 +36,14 @@ function openDb(): DatabaseSync {
     (d.prepare("PRAGMA table_info(analyses)").all() as { name: string }[]).map((c) => c.name),
   );
   if (!cols.has("comparison")) d.exec("ALTER TABLE analyses ADD COLUMN comparison TEXT");
+  if (!cols.has("note")) d.exec("ALTER TABLE analyses ADD COLUMN note TEXT");
+  const settingCols = new Set(
+    (d.prepare("PRAGMA table_info(settings)").all() as { name: string }[]).map((c) => c.name),
+  );
+  // Last connection test per model (JSON), and whether the statement text may be sent to the analyst.
+  if (!settingCols.has("analyst_status")) d.exec("ALTER TABLE settings ADD COLUMN analyst_status TEXT");
+  if (!settingCols.has("jev_status")) d.exec("ALTER TABLE settings ADD COLUMN jev_status TEXT");
+  if (!settingCols.has("send_sql")) d.exec("ALTER TABLE settings ADD COLUMN send_sql INTEGER NOT NULL DEFAULT 1");
   _db = d;
   return d;
 }
@@ -60,7 +68,7 @@ export type SettingsInput = { analyst_base_url: string; analyst_key: string; ana
   analyst_extra: string; jev_key: string; jev_model: string; onboarded: number };
 export type Analysis = { id: string; title: string; xml: string; digest: string | null; candidates: string | null;
   verdict: string | null; oul: string | null; status: string; error: string | null; created_at: number;
-  comparison: string | null };
+  comparison: string | null; note: string | null };
 
 export function createUser(email: string, passHash: string): string {
   const id = randomUUID();
@@ -81,9 +89,30 @@ export function sessionUserId(tokenHash: string): string | null {
 }
 export const dropSession = (tokenHash: string) =>
   db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(tokenHash);
+/** Sign out every other device after a password change. */
+export const dropOtherSessions = (userId: string, keepHash: string) =>
+  db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(userId, keepHash);
+export const userPassword = (id: string) => one<{ pass: string }>("SELECT pass FROM users WHERE id = ?", id);
+export const setPassword = (id: string, passHash: string) =>
+  db.prepare("UPDATE users SET pass = ? WHERE id = ?").run(passHash, id);
 
+export type StoredSettings = SettingsInput & {
+  onboarded: number; analyst_status: string | null; jev_status: string | null; send_sql: number };
 export const getSettings = (userId: string) =>
-  one<SettingsInput & { onboarded: number }>("SELECT * FROM settings WHERE user_id = ?", userId);
+  one<StoredSettings>("SELECT * FROM settings WHERE user_id = ?", userId);
+// Status and privacy are written apart from the form save, so a save never clears a test result.
+export function setModelStatus(userId: string, target: "analyst" | "jev", status: string) {
+  db.prepare(`UPDATE settings SET ${target === "analyst" ? "analyst_status" : "jev_status"} = ? WHERE user_id = ?`)
+    .run(status, userId);
+}
+export const setSendSql = (userId: string, on: boolean) =>
+  db.prepare("UPDATE settings SET send_sql = ? WHERE user_id = ?").run(on ? 1 : 0, userId);
+export const analysisIdsFor = (userId: string) =>
+  (db.prepare("SELECT id FROM analyses WHERE user_id = ?").all(userId) as { id: string }[]).map((r) => r.id);
+export const exportAnalyses = (userId: string) =>
+  (db.prepare(`SELECT id, title, status, error, created_at, digest, candidates, verdict, comparison
+     FROM analyses WHERE user_id = ? ORDER BY created_at DESC`).all(userId) as Record<string, unknown>[])
+    .map((r) => ({ ...r }));
 
 export function saveSettings(userId: string, s: SettingsInput) {
   // A blank secret means "keep what is stored" — enforced here, not only in the form layer, so no caller
@@ -107,7 +136,7 @@ export function newAnalysis(userId: string, title: string, xml: string): string 
 }
 
 // patchAnalysis builds its SET list from object keys, so the keys have to be checked, not trusted.
-const PATCHABLE = new Set(["digest", "candidates", "verdict", "oul", "status", "error", "title", "comparison"]);
+const PATCHABLE = new Set(["digest", "candidates", "verdict", "oul", "status", "error", "title", "comparison", "note"]);
 export function patchAnalysis(id: string, p: Record<string, string>) {
   const keys = Object.keys(p).filter((k) => PATCHABLE.has(k));
   if (!keys.length) return;

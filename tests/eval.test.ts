@@ -285,3 +285,34 @@ test("a slower after plan is a regression; estimated-only plans say so", () => {
   assert.equal(r.verdict, "improved");
   assert.match(r.summary, /estimated cost only/);
 });
+
+test("parallel skew and row goals are read from the plan", () => {
+  const skew = load("parallel-skew.sqlplan").topOperators.find(
+    (o: { id: string }) => o.id === "2",
+  );
+  assert.ok(skew.threadSkew > 5, String(skew.threadSkew));
+  const goal = load("row-goal.sqlplan").topOperators.find(
+    (o: { id: string }) => o.id === "2",
+  );
+  assert.equal(goal.rowGoal, true);
+});
+test("the suggested statement is the one that ran longest, not the costliest estimate", async () => {
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { Worker } = await import("node:worker_threads");
+  const dir = mkdtempSync(`${tmpdir()}/qai-rec-`);
+  const s = (id: number, cost: number, ms: number) =>
+    `<StmtSimple StatementId="${id}" StatementText="SELECT ${id}" StatementSubTreeCost="${cost}"><QueryPlan><QueryTimeStats CpuTime="${ms}" ElapsedTime="${ms}"/></QueryPlan></StmtSimple>`;
+  writeFileSync(
+    `${dir}/plan.xml`,
+    `<ShowPlanXML><BatchSequence><Batch><Statements>${s(1, 900, 20)}${s(2, 3, 8000)}</Statements></Batch></BatchSequence></ShowPlanXML>`,
+  );
+  const r: { recommended: string } = await new Promise((yes, no) => {
+    const w = new Worker("./lib/plan-worker.mjs", {
+      workerData: { file: `${dir}/plan.xml`, directory: `${dir}/out` },
+    });
+    w.once("message", yes);
+    w.once("error", no);
+  });
+  assert.equal(r.recommended, "s2");
+});

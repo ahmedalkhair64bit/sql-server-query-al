@@ -1,5 +1,10 @@
 import { requireUser } from "@/lib/auth";
-import { analystConfig, jevKey, jevModel } from "@/lib/settings";
+import {
+  analystConfig,
+  jevKey,
+  jevModel,
+  digestForModels,
+} from "@/lib/settings";
 import { proposeCandidates } from "@/lib/analyst";
 import { judgeCandidates, jevFallback, makeJevClient } from "@/lib/jev";
 import { sse } from "@/lib/stream";
@@ -81,7 +86,7 @@ export async function POST(req: Request) {
       "",
     );
     attachPlan(id, planId, statementId);
-    patchAnalysis(id, { digest: JSON.stringify(digest) });
+    patchAnalysis(id, { digest: JSON.stringify(digest), note });
     const ac = new AbortController();
     let abandoned = false;
     const stream = new ReadableStream<Uint8Array>({
@@ -96,9 +101,11 @@ export async function POST(req: Request) {
           // The page renders the stored digest (operators, warnings); the model gets digestForModel.
           send("digest", digest);
           send("stage", { stage: "proposing" });
+          // The privacy setting can withhold the statement text from both models.
+          const modelDigest = digestForModels(u.id, digest);
           const candidates = await proposeCandidates(
             analyst,
-            digest,
+            modelDigest,
             note,
             fetch,
             ac.signal,
@@ -110,10 +117,11 @@ export async function POST(req: Request) {
           let verdict;
           try {
             verdict = await judgeCandidates(
-              digest,
+              modelDigest,
               candidates,
               makeJevClient(jev, jevModel(u.id)),
               ac.signal,
+              note,
             );
           } catch {
             verdict = jevFallback(

@@ -9,7 +9,72 @@ const server = createServer(async (req, res) => {
   const body = JSON.parse(raw || "{}");
   res.setHeader("content-type", "application/json");
   if (req.url?.endsWith("/chat/completions")) {
-    const data = JSON.parse(body.messages.at(-1).content);
+    // Connection tests: a bad key or unknown model fails the way a real provider does.
+    if (req.headers.authorization === "Bearer qa-bad-key") {
+      res.statusCode = 401;
+      res.end(
+        JSON.stringify({ error: { message: "Incorrect API key provided." } }),
+      );
+      return;
+    }
+    if (body.model === "qa-missing-model") {
+      res.statusCode = 404;
+      res.end(
+        JSON.stringify({ error: { message: "The model does not exist." } }),
+      );
+      return;
+    }
+    let data;
+    try {
+      data = JSON.parse(body.messages.at(-1).content);
+    } catch {
+      res.end(JSON.stringify({ choices: [{ message: { content: "OK" } }] }));
+      return;
+    }
+    // Fault injection for the stress test: the user's note selects how the "provider" misbehaves.
+    const fault = /qa-fault:([\w-]+)/.exec(data.user_note ?? "")?.[1];
+    if (fault === "analyst-500") {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: { message: "upstream exploded" } }));
+      return;
+    }
+    if (fault === "analyst-garbage") {
+      res.end(
+        JSON.stringify({
+          choices: [
+            { message: { content: "I think you should add an index." } },
+          ],
+        }),
+      );
+      return;
+    }
+    if (fault === "analyst-truncated") {
+      res.end(
+        JSON.stringify({
+          choices: [
+            {
+              message: { content: '{"candidates":[{"key":"idx","title":"Cov' },
+            },
+          ],
+        }),
+      );
+      return;
+    }
+    if (fault === "analyst-one-option") {
+      res.end(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content:
+                  '{"candidates":[],"insufficient_evidence":"Need an actual plan."}',
+              },
+            },
+          ],
+        }),
+      );
+      return;
+    }
     const ids = data.digest.evidence.map((e) => e.id);
     const options = [
       {
@@ -18,7 +83,14 @@ const server = createServer(async (req, res) => {
         diagnosis:
           "The selected statement has a large estimate mismatch that warrants checking statistics freshness.",
         option_type: "statistics",
-        sql_to_run: "UPDATE STATISTICS [Sales].[Orders];",
+        // The plan's own first table, so the SQL checker accepts the option on any plan.
+        sql_to_run: `UPDATE STATISTICS ${(
+          data.digest.tables?.[0] ?? "Sales.Orders"
+        )
+          .split(".")
+          .slice(-2)
+          .map((p) => `[${p}]`)
+          .join(".")};`,
         expected:
           "Better cardinality estimates may improve the chosen join and access methods.",
       },
@@ -69,7 +141,30 @@ const server = createServer(async (req, res) => {
     );
     return;
   }
+  if (req.url?.endsWith("/models") && req.method === "GET") {
+    res.end(
+      JSON.stringify({
+        data: [{ id: "qa-controlled-model" }, { id: "qa-original" }],
+      }),
+    );
+    return;
+  }
   if (req.url === "/v1/systemone") {
+    const jevFault = /qa-fault:([\w-]+)/.exec(
+      body.state?.constraints ?? "",
+    )?.[1];
+    if (jevFault === "jev-500") {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: { message: "jev down" } }));
+      return;
+    }
+    if (jevFault === "jev-slow")
+      await new Promise((r) => setTimeout(r, 25_000));
+    if (req.headers.authorization === "Bearer qa-bad-key") {
+      res.statusCode = 401;
+      res.end(JSON.stringify({ error: { message: "Invalid API key." } }));
+      return;
+    }
     const answers = {};
     for (const [key, q] of Object.entries(body.questions)) {
       if (key === "first_to_run")

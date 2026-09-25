@@ -71,7 +71,10 @@ for (const status of ["abstained", "unavailable"])
     db.close();
     await page.goto(`/app/${id}`);
     await expect(page.locator("[data-verdict]")).toContainText(
-      "Jev has not selected an action",
+      /Jev declined to pick an action|Jev did not answer/,
+    );
+    await expect(page.locator("[data-verdict] h2")).not.toContainText(
+      "Review the baseline",
     );
     await expect(page.locator(".option-card")).toContainText(
       "Review the baseline",
@@ -81,7 +84,9 @@ for (const status of ["abstained", "unavailable"])
     for (const width of [375, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       const clipped = await page
-        .locator(".decision-card,.option-card,.grid-metrics")
+        .locator(
+          ".decision-hero,.option-card,.kpis,.finding-card,.timebars,.pipeline",
+        )
         .evaluateAll((elements) =>
           elements
             .filter((el) => el.getBoundingClientRect().right > innerWidth + 1)

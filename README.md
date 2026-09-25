@@ -134,26 +134,27 @@ docker compose up -d --build
 
 ## Configure your models
 
-Enter provider settings in the setup guide or **Settings**. Each user has their own saved configuration.
+After signing up, the setup guide walks through three steps: what the app does, connecting both models, and a check that both actually answer. You can change everything later under **Settings → Models**. Each user has their own saved configuration.
 
 | Field | What to enter |
 | --- | --- |
-| Analyst base URL | Your OpenAI-compatible API base URL, usually ending in `/v1`. It must be reachable from inside the container. |
-| Analyst key | Your provider key. For a local endpoint that does not require authentication, use a nonempty placeholder such as `EMPTY`. |
-| Analyst model | The model ID served by that endpoint. |
-| Extra params | Optional JSON merged into the analyst request; `{}` is a normal starting point. |
-| Jev key | Your TypeSafe API key from [TypeSafe Console](https://console.typesafe.ai/keys). |
-| Jev model | Leave blank to use `jev-latest`, or specify a model available to your account. |
+| Provider | OpenAI, Azure OpenAI, Google Gemini, OpenRouter, Ollama, vLLM, or any other OpenAI-compatible API. Choosing one fills in the base URL. |
+| Base URL | The API root, usually ending in `/v1`. It must be reachable from inside the container. |
+| API key | Your provider key. For a local endpoint without authentication, enter any text, such as `EMPTY`. |
+| Model | The exact model ID (for Azure, the deployment name). **Test analyst connection** lists the models your key can use. |
+| Reasoning model switch | Turn on for Qwen3, DeepSeek-R1 and similar models served by vLLM or SGLang; otherwise the answer arrives empty. |
+| Maximum response length | Leave empty for 4,096 tokens; raise it if answers are cut off. |
+| Advanced request parameters | Optional JSON merged into every analyst request, such as `{"temperature":0.2}`. |
+| TypeSafe API key | Your Jev key from [TypeSafe Console](https://console.typesafe.ai/keys). |
+| Jev model | `jev-latest` unless you need a pinned version. |
 
-For a Qwen/vLLM deployment that requires thinking to be disabled in the response, the extra parameters may be:
+Use the **Test** buttons before saving: each sends one tiny request and reports the real error (rejected key, unknown model, unreachable URL, timeout). The header shows **Models connected** only when both passed a test of the current settings. Inside a container, `localhost` refers to that container, not your host machine: use a reachable hostname, or `host.docker.internal` for services on the Docker host.
 
-```json
-{"chat_template_kwargs":{"enable_thinking":false}}
-```
+Saved keys are never shown again. **Leaving a key field empty keeps the saved key.** Provider keys are not passed as Docker build arguments.
 
-Use the parameters supported by your provider. Inside a container, `localhost` refers to that container—not your host machine. Use a reachable provider hostname or LAN address. Docker Desktop also supports `host.docker.internal` for services running on the host.
+**Privacy:** under Settings → Models you can stop sending the query text to the analyst model. Only plan evidence (operators, row counts, warnings, predicates, table and index names) is then sent, and query rewrites are not offered.
 
-Saved key fields are deliberately blank on reload. **Leaving a key blank keeps the existing value.** Provider keys are not passed as Docker build arguments.
+**Account and data:** changing your password requires the current one and signs out your other devices. Settings → Data exports every analysis as JSON, or deletes them all after you type `DELETE`.
 
 ## Analyze your first plan
 

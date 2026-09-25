@@ -61,7 +61,7 @@ test("an email another account already has is refused inline", async ({
   );
   await page.goto("/settings");
   await page.fill("#email", "taken@qai.test");
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Update account" }).click();
   await expect(page.locator("form p[role=alert]")).toContainText(
     "That email already has an account",
     { timeout: 15_000 },

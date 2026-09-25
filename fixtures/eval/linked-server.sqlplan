@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan" Version="1.564" Build="16.0.4085.2"><BatchSequence><Batch><Statements>
+<StmtSimple StatementText="SELECT r.Id FROM REMOTESRV.Sales.dbo.Orders r WHERE r.Total &gt; 1000" StatementId="1" StatementSubTreeCost="15" StatementType="SELECT" StatementOptmLevel="FULL" CardinalityEstimationModelVersion="160" QueryHash="0x2" QueryPlanHash="0x2F">
+<QueryPlan DegreeOfParallelism="8">
+<QueryTimeStats CpuTime="300" ElapsedTime="12000"/>
+<RelOp NodeId="0" PhysicalOp="Filter" LogicalOp="Filter" EstimateRows="10000" EstimatedTotalSubtreeCost="15"><RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="4000" ActualExecutions="1" ActualElapsedms="12000" ActualCPUms="300"/></RunTimeInformation><Filter StartupExpression="0"><RelOp NodeId="1" PhysicalOp="Remote Query" LogicalOp="Remote Query" EstimateRows="10000" EstimatedTotalSubtreeCost="14"><RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="3000000" ActualExecutions="1" ActualElapsedms="11800" ActualCPUms="120"/></RunTimeInformation><RemoteQuery RemoteSource="REMOTESRV" RemoteQuery="SELECT Id, Total FROM Sales.dbo.Orders"/></RelOp><Predicate><ScalarOperator ScalarString="[r].[Total]&gt;(1000)"/></Predicate></Filter></RelOp>
+</QueryPlan></StmtSimple>
+</Statements></Batch></BatchSequence></ShowPlanXML>
