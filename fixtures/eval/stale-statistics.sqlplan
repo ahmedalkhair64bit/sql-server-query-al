@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan" Version="1.564" Build="16.0.4085.2"><BatchSequence><Batch><Statements>
+<StmtSimple StatementText="SELECT COUNT(*) FROM dbo.Events e WHERE e.CreatedAt &gt;= @since" StatementId="1" StatementSubTreeCost="0.5" StatementType="SELECT" StatementOptmLevel="FULL" CardinalityEstimationModelVersion="160" QueryHash="0x1" QueryPlanHash="0x1F">
+<QueryPlan DegreeOfParallelism="1">
+<OptimizerStatsUsage><StatisticsInfo Database="[Shop]" Schema="[dbo]" Table="[Events]" Statistics="[IX_Events_CreatedAt]" ModificationCount="4200000" SamplingPercent="0.8" LastUpdate="2026-01-10T02:00:00"/></OptimizerStatsUsage><QueryTimeStats CpuTime="3500" ElapsedTime="3800"/>
+<RelOp NodeId="0" PhysicalOp="Stream Aggregate" LogicalOp="Aggregate" EstimateRows="1" EstimatedTotalSubtreeCost="0.5"><RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="1" ActualExecutions="1" ActualElapsedms="3800" ActualCPUms="3500"/></RunTimeInformation><StreamAggregate><RelOp NodeId="1" PhysicalOp="Index Seek" LogicalOp="Index Seek" EstimateRows="10" EstimatedTotalSubtreeCost="0.49"><OutputList><ColumnReference Database="[Shop]" Schema="[dbo]" Table="[Events]" Column="CreatedAt"/></OutputList><RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="4100000" ActualExecutions="1" ActualElapsedms="3700" ActualCPUms="3400" ActualLogicalReads="15000"/></RunTimeInformation><IndexScan><Object Database="[Shop]" Schema="[dbo]" Table="[Events]" Index="[IX_Events_CreatedAt]" IndexKind="NonClustered"/></IndexScan></RelOp></StreamAggregate></RelOp>
+<ParameterList><ColumnReference Column="@since" ParameterDataType="datetime2(3)" ParameterCompiledValue="'2026-09-20'" ParameterRuntimeValue="'2026-09-20'"/></ParameterList>
+</QueryPlan></StmtSimple>
+</Statements></Batch></BatchSequence></ShowPlanXML>

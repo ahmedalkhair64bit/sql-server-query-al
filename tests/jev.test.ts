@@ -227,11 +227,13 @@ test("verify_semantics fires where semantics can actually move", async () => {
     "rewrite not flagged",
   );
 
+  // A statistics change is scored safe by rule now; a bad Jev safety score still flags what Jev judges.
   const bad = {
     byKey: { a: scored(4, 1, 2, 1), b: GOOD.byKey.b },
     cross: GOOD.cross,
   };
-  const v2 = await judgeCandidates(digest, idxOnly, fakeJev(bad));
+  const opsOnly = [{ ...idxOnly[0], option_type: "ops" }, idxOnly[1]];
+  const v2 = await judgeCandidates(digest, opsOnly, fakeJev(bad));
   assert.ok(
     v2.order.find((r) => r.key === "a")!.flags.includes("verify_semantics"),
     "bad score not flagged",
@@ -299,4 +301,124 @@ test("Jev can select a safe alternative over the composite leader", async () => 
   assert.equal(v.headline, "b");
   assert.equal(v.source, "jev");
   assert.equal(v.agrees, false);
+});
+
+// ---- deterministic dimensions, partial failures, focused evidence ----
+const withRollback = (c: any) => ({ ...c, rollback: ["DROP INDEX"] });
+test("index and statistics safety and ease are set by rule, not asked of Jev", async () => {
+  const asked: string[][] = [];
+  const client = new TypeSafeClient({
+    apiKey: "test",
+    fetch: (async (_u: any, init: any) => {
+      const body = JSON.parse(init.body);
+      asked.push(Object.keys(body.questions));
+      const answers = body.questions.first_to_run
+        ? GOOD.cross
+        : GOOD.byKey[body.state.candidate.key as "a" | "b"];
+      return new Response(
+        JSON.stringify({ model: "jev", usage: {}, answers }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }) as any,
+    retry: { maxRetries: 0 },
+  });
+  const v = await judgeCandidates(
+    digest,
+    [withRollback(candidates[0]), candidates[1]],
+    client,
+  );
+  const a = v.order.find((r) => r.key === "a")!;
+  assert.equal(a.dims.semantic_safety.source, "rule");
+  assert.equal(a.dims.semantic_safety.value, 1);
+  assert.equal(a.dims.ease.value, 0.5);
+  const perCandidate = asked.filter((q) => !q.includes("first_to_run"));
+  assert.ok(perCandidate.some((q) => !q.includes("semantic_safety")));
+  assert.ok(
+    perCandidate.some((q) => q.includes("semantic_safety")),
+    "the rewrite is still asked",
+  );
+});
+test("a unique index is still judged by Jev", async () => {
+  const { ruleDims } = await import("../lib/jev.ts");
+  assert.deepEqual(
+    ruleDims({
+      ...candidates[0],
+      sql_to_run: "CREATE UNIQUE INDEX IX ON dbo.Orders (CustomerId);",
+    }),
+    {},
+  );
+  assert.equal(
+    ruleDims({
+      ...candidates[0],
+      option_type: "statistics",
+      sql_to_run: "UPDATE STATISTICS dbo.Orders WITH FULLSCAN;",
+    }).semantic_safety?.score,
+    3,
+  );
+});
+test("one failed judgment excludes that option instead of the whole verdict", async () => {
+  const client = new TypeSafeClient({
+    apiKey: "test",
+    fetch: (async (_u: any, init: any) => {
+      const body = JSON.parse(init.body);
+      if (!body.questions.first_to_run && body.state.candidate.key === "b")
+        return new Response("boom", { status: 400 });
+      const answers = body.questions.first_to_run
+        ? GOOD.cross
+        : GOOD.byKey[body.state.candidate.key as "a"];
+      return new Response(
+        JSON.stringify({ model: "jev", usage: {}, answers }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }) as any,
+    retry: { maxRetries: 0 },
+  });
+  const v = await judgeCandidates(digest, candidates, client);
+  assert.equal(v.headline, "a");
+  assert.ok(v.flags.includes("jev_partial"));
+  assert.ok(v.order.find((r) => r.key === "b")!.flags.includes("jev_failed"));
+});
+test("agrees compares with the best eligible option, not an ineligible leader", async () => {
+  // b leads the composite but is unsafe; Jev picks a, the best option it may choose.
+  const byKey = { a: scored(2, 4, 2, 0.8), b: scored(4, 0, 4, 1) };
+  const v = await judgeCandidates(
+    digest,
+    candidates,
+    fakeJev({ ...GOOD, byKey }),
+  );
+  assert.equal(v.order[0].key, "b");
+  assert.equal(v.headline, "a");
+  assert.equal(v.agrees, true);
+});
+test("Jev sees base evidence, findings, the top operators and what the option cites", async () => {
+  const { planFor } = await import("../lib/jev.ts");
+  const { parsePlanText } = await import("../lib/plan-parser.mjs");
+  const { readFileSync } = await import("node:fs");
+  const d = parsePlanText(
+    readFileSync("fixtures/nested-actual.sqlplan", "utf8"),
+  )[0];
+  const plan = planFor(d, ["s1:stats:0"]);
+  const kinds = new Set(plan.evidence.map((e) => e.kind));
+  for (const k of [
+    "statement",
+    "query_time",
+    "memory_grant",
+    "finding",
+    "operator",
+  ])
+    assert.ok(kinds.has(k), k);
+  assert.ok(
+    plan.evidence.some((e) => e.id === "s1:stats:0"),
+    "cited evidence kept",
+  );
+  assert.ok(
+    !plan.evidence.some((e) => e.kind === "parameter"),
+    "uncited raw evidence dropped",
+  );
 });

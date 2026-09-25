@@ -46,6 +46,10 @@ flowchart LR
 4. **Decide:** Jev checks evidence support and operational safety, scores the options, and chooses among eligible actions and an explicit no-action choice.
 5. **Explain:** display the original candidate SQL and a structured action plan. A separate writing model cannot silently change the selected SQL.
 
+Before any model is involved, **rule-based checks** flag known plan problems: key lookups, parameter sensitivity, oversized memory grants, tempdb spills, implicit conversions, residual predicates, bad row estimates, stale statistics, scalar UDFs and table variables. The analyst explains these findings instead of guessing. Each option's T-SQL is then **checked in code**: tables and columns must appear in the plan, index names must not already exist, and the SQL must be well-formed. Safety and effort for plain nonclustered indexes and statistics changes are set by rule; Jev judges the rest.
+
+Every option comes with a **validation script**: a baseline with `SET STATISTICS IO, TIME`, the plan's parameter values, checks of existing indexes and statistics, the change, a re-measure, an `EXCEPT` result comparison for rewrites, Query Store history, and the rollback. After applying an option, upload the new plan under **Did it work?** to compare measured time, reads, memory and findings with the original.
+
 If Jev abstains or is unavailable, the report shows **no selected winner**. Scores and confidence help explain the decision; they do not prove correctness or guarantee better database performance.
 
 ## Quick start with Docker
@@ -263,3 +267,14 @@ tests-e2e/     Playwright browser tests
 ```
 
 Built with Next.js, React, SQLite, a streaming XML parser, and the TypeSafe SDK.
+
+### Measuring recommendation quality
+
+`fixtures/eval/` holds plans with known answers. `npm test` checks that the rule-based findings detect each problem. To measure the models themselves:
+
+```bash
+ANALYST_BASE_URL=https://api.example.com/v1 ANALYST_API_KEY=... ANALYST_MODEL=... \
+JEV_API_KEY=... npm run eval:plans
+```
+
+It reports how often Jev picks a correct fix type, and declines on the healthy plan. Add your own anonymized plans to `fixtures/eval/private/` (gitignored) with a `cases.json` in the same shape. `npm run eval:plans -- --outcomes data/qai.db` reports real outcomes from saved before/after comparisons.

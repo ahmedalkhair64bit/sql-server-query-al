@@ -14,6 +14,7 @@ export type StatementSummary = {
   sql: string;
   estimatedCost: number | null;
   actual: boolean;
+  queryHash?: string;
   offset: number;
   length: number;
 };
@@ -54,6 +55,21 @@ export async function listStatements(planId: string, page = 0) {
     input.destroy();
   }
   return result;
+}
+/** The statement with this query hash, for matching an after plan to the analysed statement. */
+export async function statementByHash(planId: string, hash: string) {
+  const input = createReadStream(join(root(), planId, "index.ndjson"));
+  const lines = createInterface({ input, crlfDelay: Infinity });
+  try {
+    for await (const line of lines) {
+      const row = JSON.parse(line) as StatementSummary;
+      if (row.queryHash === hash) return row.id;
+    }
+  } finally {
+    lines.close();
+    input.destroy();
+  }
+  return null;
 }
 export async function statementDigest(
   planId: string,

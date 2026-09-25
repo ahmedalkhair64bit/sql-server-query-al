@@ -31,6 +31,11 @@ function openDb(): DatabaseSync {
       status TEXT NOT NULL DEFAULT 'running', error TEXT,
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS ix_analyses_user ON analyses(user_id, created_at DESC);`);
+  // Columns added after the first release: existing /data volumes get them on first open.
+  const cols = new Set(
+    (d.prepare("PRAGMA table_info(analyses)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!cols.has("comparison")) d.exec("ALTER TABLE analyses ADD COLUMN comparison TEXT");
   _db = d;
   return d;
 }
@@ -54,7 +59,8 @@ const one = <T>(sql: string, ...p: Row[]): T | null => plain<T>(db.prepare(sql).
 export type SettingsInput = { analyst_base_url: string; analyst_key: string; analyst_model: string;
   analyst_extra: string; jev_key: string; jev_model: string; onboarded: number };
 export type Analysis = { id: string; title: string; xml: string; digest: string | null; candidates: string | null;
-  verdict: string | null; oul: string | null; status: string; error: string | null; created_at: number };
+  verdict: string | null; oul: string | null; status: string; error: string | null; created_at: number;
+  comparison: string | null };
 
 export function createUser(email: string, passHash: string): string {
   const id = randomUUID();
@@ -101,7 +107,7 @@ export function newAnalysis(userId: string, title: string, xml: string): string 
 }
 
 // patchAnalysis builds its SET list from object keys, so the keys have to be checked, not trusted.
-const PATCHABLE = new Set(["digest", "candidates", "verdict", "oul", "status", "error", "title"]);
+const PATCHABLE = new Set(["digest", "candidates", "verdict", "oul", "status", "error", "title", "comparison"]);
 export function patchAnalysis(id: string, p: Record<string, string>) {
   const keys = Object.keys(p).filter((k) => PATCHABLE.has(k));
   if (!keys.length) return;

@@ -1,0 +1,103 @@
+{
+  "about": "Plans with known answers. expect_findings: rule findings that must be detected (warning or critical for all but info rules). correct_fix_types: option types that fix the problem; an empty list means Jev should decline. Add your own anonymized plans in fixtures/eval/private/ with the same cases.json shape.",
+  "cases": [
+    {
+      "file": "key-lookup.sqlplan",
+      "description": "Key lookup executed 60,000 times from a narrow nonclustered index.",
+      "expect_findings": [
+        "key_lookup"
+      ],
+      "correct_fix_types": [
+        "index"
+      ]
+    },
+    {
+      "file": "parameter-sniffing.sqlplan",
+      "description": "Plan compiled for a rare status value, reused for a common one.",
+      "expect_findings": [
+        "parameter_sniffing",
+        "row_estimate_error"
+      ],
+      "correct_fix_types": [
+        "rewrite",
+        "ops",
+        "statistics"
+      ]
+    },
+    {
+      "file": "implicit-conversion.sqlplan",
+      "description": "nvarchar parameter against a varchar column forces a scan.",
+      "expect_findings": [
+        "implicit_conversion",
+        "residual_predicate"
+      ],
+      "correct_fix_types": [
+        "rewrite",
+        "app",
+        "schema"
+      ]
+    },
+    {
+      "file": "sort-spill.sqlplan",
+      "description": "Sort spills because 1,200 rows were estimated and 1.5 million arrived.",
+      "expect_findings": [
+        "tempdb_spill",
+        "row_estimate_error"
+      ],
+      "correct_fix_types": [
+        "statistics",
+        "index"
+      ]
+    },
+    {
+      "file": "stale-statistics.sqlplan",
+      "description": "Ascending-key statistics are 4.2 million modifications old; the recent range is estimated at 10 rows.",
+      "expect_findings": [
+        "stale_statistics",
+        "row_estimate_error"
+      ],
+      "correct_fix_types": [
+        "statistics"
+      ]
+    },
+    {
+      "file": "residual-scan-estimated.sqlplan",
+      "description": "Estimated plan: clustered scan reads 3 million rows to return 420; the optimizer suggests an index.",
+      "expect_findings": [
+        "residual_predicate",
+        "missing_index"
+      ],
+      "correct_fix_types": [
+        "index"
+      ]
+    },
+    {
+      "file": "scalar-udf.sqlplan",
+      "description": "A scalar UDF runs per row and forces a serial plan.",
+      "expect_findings": [
+        "scalar_udf"
+      ],
+      "correct_fix_types": [
+        "rewrite"
+      ]
+    },
+    {
+      "file": "table-variable.sqlplan",
+      "description": "A table variable estimated at 1 row holds 250,000; nested loops run 250,000 seeks.",
+      "expect_findings": [
+        "table_variable",
+        "row_estimate_error"
+      ],
+      "correct_fix_types": [
+        "rewrite",
+        "app"
+      ]
+    },
+    {
+      "file": "healthy.sqlplan",
+      "description": "A single-row clustered seek: nothing to fix. Declining to pick is the right answer.",
+      "expect_findings": [],
+      "correct_fix_types": []
+    }
+  ]
+}
