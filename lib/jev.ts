@@ -19,6 +19,11 @@ const SPLIT_FLOOR = 0.3;
 const SPLIT_MAX_DECLINE = 0.25;
 /** A first action may trail the option that best attacks the bottleneck by at most this much fit. */
 const FIT_GAP = 0.3;
+/** Samples of Jev's final choice, averaged (JEV_CROSS_SAMPLES, default 2). */
+const CROSS_SAMPLES = Math.max(
+  1,
+  Math.min(5, Number(process.env.JEV_CROSS_SAMPLES) || 2),
+);
 // Findings that mean the optimizer's row estimates are part of the problem.
 const ESTIMATE_RULES = new Set([
   "row_estimate_error",
@@ -193,11 +198,69 @@ function rank(
 // Answers that follow from the option's own SQL, so Jev is not asked for an opinion on them.
 // A nonclustered, non-unique index or a statistics change cannot alter the rows a query returns, and the
 // work it takes is known from its type. Unique, clustered, columnstore or filtered indexes stay with Jev.
-export function ruleDims(c: Candidate): {
+// Query hints that change how a statement runs, never what it returns.
+const RESULT_PRESERVING_HINT =
+  /^(RECOMPILE|USE\s+HINT\s*\(.*\)|OPTIMIZE\s+FOR\s+UNKNOWN|OPTIMIZE\s+FOR\s*\(.*\)|MAXDOP\s+\d+|(HASH|LOOP|MERGE)\s+JOIN|(HASH|ORDER|CONCAT|MERGE)\s+UNION|(HASH|ORDER)\s+GROUP|FORCE\s+ORDER|KEEPFIXED\s+PLAN|KEEP\s+PLAN|(MIN|MAX)_GRANT_PERCENT\s*=\s*[\d.]+|DISABLE_OPTIMIZER_ROWGOAL)$/i;
+
+/** Split "a, USE HINT('x','y'), b" on the commas that are not inside parentheses. */
+function splitTopLevel(s: string): string[] {
+  const out: string[] = [];
+  let depth = 0,
+    cur = "",
+    quote = false;
+  for (const ch of s) {
+    if (ch === "'") quote = !quote;
+    if (!quote && ch === "(") depth++;
+    if (!quote && ch === ")") depth--;
+    if (!quote && depth === 0 && ch === ",") {
+      out.push(cur.trim());
+      cur = "";
+    } else cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/**
+ * True when `sql` is the original statement plus only an OPTION (...) clause of result-preserving hints:
+ * it runs differently but cannot return different rows, so its safety is a fact, not a judgement. On real
+ * runs Jev's doubt about "same rows?" let a model's new index beat OPTION (RECOMPILE) where RECOMPILE was
+ * the textbook fix.
+ */
+export function hintOnlyRewrite(sql: string, original: string): boolean {
+  const norm = (x: string) =>
+    x
+      .replace(/--[^\n]*/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/;\s*$/, "")
+      .trim()
+      .toLowerCase();
+  const m = /^(.*)\boption\s*\((.*)\)$/i.exec(norm(sql));
+  if (!m || !original.trim()) return false;
+  if (norm(m[1]) !== norm(original)) return false;
+  const hints = splitTopLevel(m[2]);
+  return hints.length > 0 && hints.every((h) => RESULT_PRESERVING_HINT.test(h));
+}
+
+export function ruleDims(
+  c: Candidate,
+  /** The statement's original text: lets a hint-only rewrite be recognised. */
+  originalSql = "",
+): {
   semantic_safety?: Scored;
   ease?: Scored;
 } {
   if (c.rejected_reasons?.length) return {};
+  if (
+    c.option_type === "rewrite" &&
+    c.sql_to_run &&
+    hintOnlyRewrite(c.sql_to_run, originalSql)
+  )
+    return {
+      semantic_safety: { score: 3, confidence: null, source: "rule" },
+      ease: { score: 3, confidence: null, source: "rule" },
+    };
   // Operations and application options that run no SQL against the query (find the blocker, change the
   // parameter type the app sends) cannot change the rows it returns. Asking Jev "same rows?" about them
   // produced confidence as low as 0.05 and blocked correct fixes on real runs; answer it by rule instead.
@@ -284,7 +347,7 @@ export async function judgeCandidates(
 ): Promise<Verdict> {
   if (!candidates.length)
     throw new Error("There are no options for Jev to judge.");
-  const rules = candidates.map(ruleDims);
+  const rules = candidates.map((c) => ruleDims(c, digest.sql ?? ""));
   const context: Record<string, string> = constraints.trim()
     ? { constraints: constraints.slice(0, 2000) }
     : {};
@@ -400,36 +463,82 @@ export async function judgeCandidates(
       weights: WEIGHTS,
       flags: ["no_suitable_action", ...(failed.size ? ["jev_partial"] : [])],
     };
-  const cross = await client.systemOne(
-    {
-      state: {
-        plan: planFor(
-          digest,
-          eligible.flatMap((c) => c.evidence_ids ?? []),
-        ),
-        options: eligible,
-        judgments: JSON.parse(JSON.stringify(eligibleRanked)),
-        ...context,
+  const ask = () =>
+    client.systemOne(
+      {
+        state: {
+          plan: planFor(
+            digest,
+            eligible.flatMap((c) => c.evidence_ids ?? []),
+          ),
+          options: eligible,
+          judgments: JSON.parse(JSON.stringify(eligibleRanked)),
+          ...context,
+        },
+        questions: {
+          first_to_run: choice(
+            "Which option should the DBA review first, considering complete actions, the critical findings in `plan.evidence`, prerequisites, safety, operational risk, the judgments and the DBA's `constraints` when present? Choose no_suitable_action if evidence is insufficient or all actions are unsuitable. A plan estimate is not a measured improvement.",
+            {
+              ...Object.fromEntries(
+                eligible.map((c) => [c.key, `${c.title} — ${c.expected}`]),
+              ),
+              no_suitable_action:
+                "No defensible first action; collect evidence.",
+            },
+          ),
+          anything_worth_running: noul(
+            "At least one option is supported by plan evidence and likely to improve the query without changing its results.",
+          ),
+        },
       },
-      questions: {
-        first_to_run: choice(
-          "Which option should the DBA review first, considering complete actions, the critical findings in `plan.evidence`, prerequisites, safety, operational risk, the judgments and the DBA's `constraints` when present? Choose no_suitable_action if evidence is insufficient or all actions are unsuitable. A plan estimate is not a measured improvement.",
-          {
-            ...Object.fromEntries(
-              eligible.map((c) => [c.key, `${c.title} — ${c.expected}`]),
-            ),
-            no_suitable_action: "No defensible first action; collect evidence.",
-          },
-        ),
-        anything_worth_running: noul(
-          "At least one option is supported by plan evidence and likely to improve the query without changing its results.",
-        ),
-      },
-    },
-    { signal },
+      { signal },
+    );
+  // The final choice is asked CROSS_SAMPLES times in parallel and averaged. Measured on real plans, one
+  // sample swung between close options from run to run (54/46 one run, 46/54 the next); the average of two
+  // is steadier for about a second more. One failed sample does not lose the other.
+  const samples = (
+    await Promise.allSettled(Array.from({ length: CROSS_SAMPLES }, ask))
+  ).flatMap((r) => (r.status === "fulfilled" ? [r.value.answers] : []));
+  if (!samples.length) throw new Error("Jev did not answer the final choice.");
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const keys = [
+    ...new Set(
+      samples.flatMap((a) => [
+        a.first_to_run.choice,
+        ...Object.keys(a.first_to_run.probabilities ?? {}),
+      ]),
+    ),
+  ];
+  const averaged: Record<string, number> = Object.fromEntries(
+    keys.map((k) => [
+      k,
+      mean(
+        samples.map((a) => {
+          const p = a.first_to_run.probabilities as
+            Record<string, number> | undefined;
+          return (
+            p?.[k] ??
+            (a.first_to_run.choice === k ? a.first_to_run.confidence : 0)
+          );
+        }),
+      ),
+    ]),
   );
-  const pick = cross.answers.first_to_run;
-  const worth = cross.answers.anything_worth_running.noul;
+  const choiceKey = keys.reduce((best, k) =>
+    averaged[k] > averaged[best] ? k : best,
+  );
+  const pick = {
+    choice: choiceKey,
+    confidence: mean(
+      samples.map((a) =>
+        a.first_to_run.choice === choiceKey ? a.first_to_run.confidence : 0,
+      ),
+    ),
+    probabilities: samples.some((a) => a.first_to_run.probabilities)
+      ? averaged
+      : undefined,
+  };
+  const worth = mean(samples.map((a) => a.anything_worth_running.noul));
   const valid = eligible.some((c) => c.key === pick.choice);
   // A split decision: the pick is under 50% only because other eligible options took the rest, not because
   // Jev leans towards "collect more evidence". Measured on real runs, this was the most common reason Jev

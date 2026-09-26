@@ -610,6 +610,29 @@ select.field {
   margin-top: 12px;
   font-size: 13px;
 }
+.context-details {
+  margin: 14px 0 0;
+}
+.context-details[open] {
+  display: grid;
+  gap: 8px;
+}
+.context-details p[role="status"],
+.context-details p.muted {
+  padding: 0;
+  background: none;
+  border: 0;
+  margin: 0;
+}
+.context-details textarea {
+  width: 100%;
+  max-width: 100%;
+  font-family: var(--qai-font-mono);
+  font-size: 12px;
+}
+.context-details .btn {
+  justify-self: start;
+}
 .progress-status {
   display: flex;
   align-items: center;

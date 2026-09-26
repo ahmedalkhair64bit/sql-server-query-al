@@ -657,9 +657,8 @@ test("statistics are never the first action on an actual plan whose estimates ar
       .find((r) => r.key === "stats")!
       .flags.includes("estimates_accurate"),
   );
-  assert.deepEqual(
-    offered,
-    [["a"]],
+  assert.ok(
+    offered.length >= 1 && offered.every((o) => o.join() === "a"),
     "the statistics option is not offered as a first action",
   );
   assert.equal(v.headline, "a");
@@ -713,4 +712,88 @@ test("an option far behind on bottleneck fit is an alternative, not a first acti
     !v.order.find((r) => r.key === "a")!.flags.includes("misses_bottleneck"),
   );
   assert.equal(v.headline, "a");
+});
+
+test("the original statement plus only result-preserving hints is safe and easy by rule", async () => {
+  const { ruleDims, hintOnlyRewrite } = await import("../lib/jev.ts");
+  const original = "SELECT * FROM dbo.Orders o WHERE o.Status = @status";
+  assert.ok(hintOnlyRewrite(`${original}\nOPTION (RECOMPILE);`, original));
+  assert.ok(
+    hintOnlyRewrite(
+      `${original} OPTION (USE HINT ('DISABLE_OPTIMIZER_ROWGOAL', 'FORCE_LEGACY_CARDINALITY_ESTIMATION'), MAXDOP 4)`,
+      original,
+    ),
+  );
+  assert.ok(
+    !hintOnlyRewrite(
+      `${original} AND o.Total > 0 OPTION (RECOMPILE)`,
+      original,
+    ),
+    "the query itself changed",
+  );
+  assert.ok(
+    !hintOnlyRewrite(`${original} OPTION (TABLE HINT (o, NOLOCK))`, original),
+    "not an allowed hint",
+  );
+  assert.ok(!hintOnlyRewrite(original, original), "no hint at all");
+  const dims = ruleDims(
+    {
+      ...candidates[0],
+      option_type: "rewrite",
+      sql_to_run: `${original} OPTION (RECOMPILE);`,
+      rejected_reasons: [],
+    },
+    original,
+  );
+  assert.equal(dims.semantic_safety?.source, "rule");
+  assert.equal(dims.ease?.score, 3);
+});
+
+test("the final choice is asked twice and averaged: a coin-flip between two close options settles", async () => {
+  let n = 0;
+  const both = { a: scored(4, 4, 2, 0.9), b: scored(4, 4, 2, 0.9) };
+  const client = new TypeSafeClient({
+    apiKey: "test",
+    fetch: (async (_u: any, init: any) => {
+      const body = JSON.parse(init.body);
+      let answers;
+      if (body.questions.first_to_run) {
+        n++;
+        // Sample 1 leans a (0.52/0.40), sample 2 leans b (0.47/0.45): the average favours a.
+        const probabilities =
+          n % 2
+            ? { a: 0.52, b: 0.4, no_suitable_action: 0.08 }
+            : { a: 0.45, b: 0.47, no_suitable_action: 0.08 };
+        const choice = probabilities.a >= probabilities.b ? "a" : "b";
+        answers = {
+          first_to_run: {
+            type: "choice",
+            choice,
+            confidence: probabilities[choice],
+            probabilities,
+          },
+          anything_worth_running: { type: "noul", noul: 0.9 },
+        };
+      } else answers = both[body.state.candidate.key as "a" | "b"];
+      return new Response(
+        JSON.stringify({ model: "jev", usage: {}, answers }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }) as any,
+  });
+  const safeB = [
+    candidates[0],
+    {
+      ...candidates[1],
+      option_type: "statistics",
+      sql_to_run: "UPDATE STATISTICS dbo.Orders;",
+    },
+  ];
+  const v = await judgeCandidates(digest, safeB, client);
+  assert.equal(n, 2, "two samples of the final choice");
+  assert.equal(v.jev_pick, "a");
+  assert.ok(Math.abs(v.jev_probabilities!.a - 0.485) < 1e-9);
 });
