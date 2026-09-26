@@ -72,3 +72,18 @@ test("a model option that creates the same index as a rule option is dropped for
     [rule[0].key, "rewrite_model"],
   );
 });
+
+test("a query that already runs in milliseconds is decided by rule: nothing to tune for speed", async () => {
+  const { fastQueryReason } = await import("../lib/rule-options.mjs");
+  assert.match(fastQueryReason(plan("healthy.sqlplan"))!, /ran in \d+ ms/);
+  assert.equal(
+    fastQueryReason(plan("key-lookup.sqlplan")),
+    null,
+    "5.2 s is worth tuning",
+  );
+  assert.equal(
+    fastQueryReason(plan("residual-scan-estimated.sqlplan")),
+    null,
+    "an estimated plan has no measured time",
+  );
+});

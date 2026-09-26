@@ -5,7 +5,11 @@ import {
   digestForModels,
 } from "../settings.ts";
 import { proposeCandidates, AnalystError, type Candidate } from "../analyst.ts";
-import { ruleOptions, withRuleOptions } from "../rule-options.mjs";
+import {
+  ruleOptions,
+  withRuleOptions,
+  fastQueryReason,
+} from "../rule-options.mjs";
 import { checkCandidateSql } from "../sql-check.mjs";
 import {
   judgeCandidates,
@@ -21,7 +25,7 @@ import { createHash } from "node:crypto";
  * Bump when the analysis pipeline changes what it would answer (prompts, rules, thresholds), so results
  * from before the change are not reused.
  */
-export const PIPELINE_VERSION = "2026-09-26.2";
+export const PIPELINE_VERSION = "2026-09-27";
 
 /**
  * Identifies an identical request: the exact evidence the models would see (after the privacy setting),
@@ -154,6 +158,23 @@ async function run(job: Job, digest: Digest, note: string) {
     // with its index...). Jev judges them next to the model's, so a correct complete option is on the table
     // whatever the model writes. With the statement text withheld from the models, options that contain
     // the rewritten statement are withheld too.
+    // A query that already runs in a few milliseconds needs no tuning, and asking the models anyway made
+    // them alternate between "healthy" and an invented fix on the same plan. Decided by rule, not by model.
+    // Unless the DBA gave context (for example "slow in production" on a plan captured on test data).
+    const fast = note.trim() ? null : fastQueryReason(digest);
+    if (fast) {
+      const verdict = nothingToFix(fast);
+      patchAnalysis(id, {
+        candidates: "[]",
+        verdict: JSON.stringify(verdict),
+        status: "done",
+        run_key: runKey(userId, digest, note),
+      });
+      emit("candidates", []);
+      emit("verdict", verdict);
+      emit("done", { id });
+      return;
+    }
     const withheld = modelDigest.sql !== digest.sql;
     const rules = (ruleOptions(digest) as Candidate[])
       .filter((o) => !(withheld && o.option_type === "rewrite"))
@@ -174,6 +195,14 @@ async function run(job: Job, digest: Digest, note: string) {
         note,
         undefined,
         job.ac.signal,
+        {
+          minOptions: rules.length ? 1 : 2,
+          alreadyProposed: rules.map((o) => ({
+            title: o.title,
+            option_type: o.option_type,
+            sql: o.sql_to_run,
+          })),
+        },
       );
     } catch (e) {
       if (job.ac.signal.aborted) throw e;

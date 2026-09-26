@@ -389,3 +389,79 @@ test("the default limit retries at 32,000; a model that rejects it still gets th
   );
   assert.deepEqual(limits, [4096, 32000]);
 });
+
+// Measured on real DeepSeek runs: option_type "query_rewrite", one malformed option, or an answer cut off
+// after two complete options each discarded every option the model wrote.
+const answer = (content: string, finish = "stop") =>
+  (async () =>
+    new Response(
+      JSON.stringify({
+        choices: [{ message: { content }, finish_reason: finish }],
+      }),
+    )) as unknown as typeof fetch;
+
+test("near-miss option types are normalised and one malformed option no longer sinks the others", async () => {
+  const { proposeCandidates } = await import("../lib/analyst.ts");
+  const [a, b] = CANDS.candidates;
+  const out = await proposeCandidates(
+    cfg,
+    digest,
+    "",
+    answer(
+      JSON.stringify({
+        candidates: [
+          { ...a, option_type: "Indexing" },
+          { ...b, option_type: "query_rewrite" },
+          { key: "broken", title: "x" },
+        ],
+      }),
+    ),
+  );
+  assert.deepEqual(
+    out.map((c) => [c.key, c.option_type]),
+    [
+      [a.key, "index"],
+      [b.key, "rewrite"],
+    ],
+  );
+});
+
+test("the complete options before a cut-off are kept", async () => {
+  const { proposeCandidates, salvageCandidates } =
+    await import("../lib/analyst.ts");
+  const [a, b] = CANDS.candidates;
+  const cut =
+    '{"candidates":[' +
+    JSON.stringify(a) +
+    "," +
+    JSON.stringify(b) +
+    ',{"key":"third","title":"Half an opt';
+  assert.equal(salvageCandidates(cut).length, 2);
+  const out = await proposeCandidates(
+    { ...cfg, extra: { max_tokens: 65536 } } as any,
+    digest,
+    "",
+    answer(cut, "length"),
+  );
+  assert.equal(out.length, 2);
+  // With rule-built options also on the table, one usable model option is enough.
+  const one =
+    '{"candidates":[' + JSON.stringify(a) + ',{"key":"half","title":"cut';
+  await assert.rejects(() =>
+    proposeCandidates(
+      { ...cfg, extra: { max_tokens: 65536 } } as any,
+      digest,
+      "",
+      answer(one, "length"),
+    ),
+  );
+  const single = await proposeCandidates(
+    { ...cfg, extra: { max_tokens: 65536 } } as any,
+    digest,
+    "",
+    answer(one, "length"),
+    undefined,
+    { minOptions: 1 },
+  );
+  assert.equal(single.length, 1);
+});
