@@ -81,6 +81,9 @@ const { parsePlanText, recommendStatement } =
 const { decodeBytes } = await import("../lib/plan-decoder.mjs");
 const { proposeCandidates } = await import("../lib/analyst.ts");
 const { judgeCandidates, makeJevClient } = await import("../lib/jev.ts");
+const { ruleOptions, withRuleOptions } =
+  await import("../lib/rule-options.mjs");
+const { checkCandidateSql } = await import("../lib/sql-check.mjs");
 
 const suites = ["fixtures/eval", "fixtures/eval/private"].filter((dir) =>
   existsSync(join(dir, "cases.json")),
@@ -108,7 +111,23 @@ async function runCase({ dir, c }) {
     const digest = recommendStatement(
       parsePlanText(decodeBytes(readFileSync(join(dir, c.file)))),
     );
-    const candidates = await proposeCandidates(analyst, digest, c.note ?? "");
+    // The same pipeline as the app: rule-built options next to the model's (lib/server/jobs.ts).
+    const rules = ruleOptions(digest).map((o) => {
+      const check = checkCandidateSql(o, digest);
+      return {
+        ...o,
+        rejected_reasons: check.errors,
+        check_warnings: check.warnings,
+      };
+    });
+    let modelOptions = [];
+    try {
+      modelOptions = await proposeCandidates(analyst, digest, c.note ?? "");
+    } catch (e) {
+      if (!rules.length) throw e;
+      row.analystError = e.message.slice(0, 200);
+    }
+    const candidates = withRuleOptions(rules, modelOptions);
     const verdict = await judgeCandidates(
       digest,
       candidates,
@@ -120,7 +139,7 @@ async function runCase({ dir, c }) {
     row.proposed = candidates.map((x) => x.option_type);
     row.options = candidates.map(
       (x) =>
-        `${x.key} [${x.option_type}]${x.rejected_reasons.length ? " REJECTED: " + x.rejected_reasons[0] : ""}`,
+        `${x.source === "rule" ? "RULE " : ""}${x.key} [${x.option_type}]${x.rejected_reasons.length ? " REJECTED: " + x.rejected_reasons[0] : ""}`,
     );
     row.rejected = candidates.filter((x) => x.rejected_reasons.length).length;
     row.picked = picked?.option_type ?? null;

@@ -91,6 +91,8 @@ export type Verdict = {
   reason?: string;
   /** Jev's probability for each choice, including no_suitable_action: how clear-cut the decision was. */
   jev_probabilities?: Record<string, number>;
+  /** Set when the analyst model failed and only rule-built options were judged. */
+  analyst_error?: string;
   agrees: boolean;
   anything_worth_running: number;
   weights: Record<Dim, number>;

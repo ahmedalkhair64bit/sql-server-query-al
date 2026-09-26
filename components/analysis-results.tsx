@@ -233,6 +233,8 @@ export function AnalysisResults({
                         : c.rejected_reasons?.length
                           ? "· Needs correction"
                           : "· Alternative"}
+                      {(c as { source?: string }).source === "rule" &&
+                        " · Built from the plan by rule"}
                     </small>
                   </span>
                   {scores && verdict?.status !== "unavailable" && (
