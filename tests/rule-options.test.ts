@@ -87,3 +87,78 @@ test("a query that already runs in milliseconds is decided by rule: nothing to t
     "an estimated plan has no measured time",
   );
 });
+
+// ---- more patterns ----
+const fromXml = (xml: string) => recommendStatement(parsePlanText(xml));
+const variant = (statement: string, predicate: string) =>
+  fromXml(
+    readFileSync("fixtures/eval/non-sargable.sqlplan", "utf8")
+      .replace(/StatementText="[^"]*"/, `StatementText="${statement}"`)
+      .replace(/ScalarString="datepart[^"]*"/, `ScalarString="${predicate}"`),
+  );
+
+test("CAST(col AS date) = value becomes a one-day range; LEFT(col, n) = 'text' becomes a LIKE prefix", () => {
+  const cast = ruleOptions(
+    variant(
+      "SELECT o.OrderId FROM dbo.Orders o WHERE CAST(o.OrderDate AS date) = @d",
+      "CONVERT(date,[Shop].[dbo].[Orders].[OrderDate] as [o].[OrderDate],0)=[@d]",
+    ),
+  );
+  assert.equal(
+    cast[0].sql_to_run,
+    "SELECT o.OrderId FROM dbo.Orders o WHERE o.OrderDate >= @d AND o.OrderDate < DATEADD(day, 1, @d);",
+  );
+  const left = ruleOptions(
+    variant(
+      "SELECT o.OrderId FROM dbo.Orders o WHERE LEFT(o.OrderDate, 4) = '2025'",
+      "substring([Shop].[dbo].[Orders].[OrderDate] as [o].[OrderDate],(1),(4))='2025'",
+    ),
+  );
+  assert.match(left[0].sql_to_run, /o\.OrderDate LIKE '2025%'/);
+  // LEFT(col, 3) = 'abcd' cannot be the same rows as a prefix of a different length: no option.
+  assert.deepEqual(
+    ruleOptions(
+      variant(
+        "SELECT o.OrderId FROM dbo.Orders o WHERE LEFT(o.OrderDate, 3) = '2025'",
+        "substring([Shop].[dbo].[Orders].[OrderDate] as [o].[OrderDate],(1),(3))='2025'",
+      ),
+    ).filter((o: any) => o.key.startsWith("rule_sargable")),
+    [],
+  );
+});
+
+test("statistics: refresh the stale ones behind a real estimate error; create the missing ones", () => {
+  assert.deepEqual(sqlOf("stale-statistics.sqlplan"), [
+    "UPDATE STATISTICS [dbo].[Events] [IX_Events_CreatedAt] WITH FULLSCAN;",
+  ]);
+  assert.deepEqual(
+    ruleOptions(
+      recommendStatement(
+        parsePlanText(
+          decodeBytes(
+            readFileSync(
+              "fixtures/external/html-query-plan/test_plans/columns_with_no_statistics.sqlplan",
+            ),
+          ),
+        ),
+      ),
+    ).map((o: any) => o.sql_to_run),
+    [
+      "CREATE STATISTICS [ST_TestTableA_TestTableB_Id] ON [myschema].[TestTableA] ([TestTableB_Id]) WITH FULLSCAN;",
+    ],
+  );
+});
+
+test("row goal, table variable, implicit conversion and blocking get their textbook fixes", () => {
+  assert.deepEqual(sqlOf("row-goal.sqlplan"), [
+    "SELECT TOP (10) o.OrderId FROM dbo.Orders o JOIN dbo.Customers c ON c.CustomerId = o.CustomerId WHERE c.Region = 'EMEA' ORDER BY o.OrderId OPTION (USE HINT ('DISABLE_OPTIMIZER_ROWGOAL'));",
+  ]);
+  assert.deepEqual(sqlOf("table-variable.sqlplan"), [
+    "SELECT o.OrderId FROM @ids i JOIN dbo.Orders o ON o.OrderId = i.Id OPTION (RECOMPILE);",
+  ]);
+  const conv = ruleOptions(plan("implicit-conversion.sqlplan"));
+  assert.equal(conv[0].title, "Send @code as varchar(20) to match AccountCode");
+  assert.equal(conv[0].option_type, "app");
+  const block = ruleOptions(plan("blocking-waits.sqlplan"));
+  assert.equal(block[0].key, "rule_find_blocker");
+});
