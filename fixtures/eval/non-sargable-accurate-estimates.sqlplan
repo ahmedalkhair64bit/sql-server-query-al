@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan" Version="1.564" Build="16.0.4085.2"><BatchSequence><Batch><Statements>
+<StmtSimple StatementText="SELECT COUNT(*) FROM dbo.Tickets WHERE YEAR(CreatedOn) = 2024" StatementId="1" StatementSubTreeCost="3097.5" StatementType="SELECT" StatementOptmLevel="FULL" CardinalityEstimationModelVersion="160" QueryHash="0x7" QueryPlanHash="0x7F">
+<QueryPlan DegreeOfParallelism="8">
+<MemoryGrantInfo SerialRequiredMemory="512" SerialDesiredMemory="24776" RequiredMemory="4608" DesiredMemory="24776" RequestedMemory="24776" GrantWaitTime="0" GrantedMemory="24776" MaxUsedMemory="2984"/>
+<OptimizerStatsUsage><StatisticsInfo Database="[Helpdesk]" Schema="[dbo]" Table="[Tickets]" Statistics="[_WA_Sys_00000008_0519C6AF]" ModificationCount="0" SamplingPercent="0.856216" LastUpdate="2026-08-01T02:00:00"/></OptimizerStatsUsage>
+<QueryTimeStats CpuTime="5770" ElapsedTime="725"/>
+<RelOp NodeId="0" PhysicalOp="Stream Aggregate" LogicalOp="Aggregate" EstimateRows="1" EstimatedTotalSubtreeCost="3097.5"><RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="1" ActualExecutions="1" ActualElapsedms="725" ActualCPUms="5"/></RunTimeInformation><StreamAggregate>
+<RelOp NodeId="1" PhysicalOp="Parallelism" LogicalOp="Gather Streams" EstimateRows="8" EstimatedTotalSubtreeCost="3097.4" Parallel="1"><RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="8" ActualExecutions="1" ActualElapsedms="724" ActualCPUms="1"/></RunTimeInformation><Parallelism>
+<RelOp NodeId="4" PhysicalOp="Clustered Index Scan" LogicalOp="Clustered Index Scan" EstimateRows="5384900" EstimatedRowsRead="17142169" EstimatedTotalSubtreeCost="3090" Parallel="1"><RunTimeInformation><RunTimeCountersPerThread Thread="1" ActualRows="5413518" ActualExecutions="1" ActualElapsedms="700" ActualCPUms="5700" ActualLogicalReads="4226624" ActualRowsRead="17142169"/></RunTimeInformation><IndexScan><Object Database="[Helpdesk]" Schema="[dbo]" Table="[Tickets]" Index="[PK_Tickets]" IndexKind="Clustered"/><Predicate><ScalarOperator ScalarString="datepart(year,[Helpdesk].[dbo].[Tickets].[CreatedOn])=(2024)"/></Predicate></IndexScan></RelOp>
+</Parallelism></RelOp>
+</StreamAggregate></RelOp>
+</QueryPlan></StmtSimple>
+</Statements></Batch></BatchSequence></ShowPlanXML>

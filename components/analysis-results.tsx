@@ -238,7 +238,7 @@ export function AnalysisResults({
                   {scores && verdict?.status !== "unavailable" && (
                     <span
                       className="opt-score"
-                      title="Jev composite score: weighted fit, safety, ease and root cause"
+                      title="Option score: this option's weighted fit, safety, ease and root cause. Not Jev's certainty in the decision."
                     >
                       {Math.round(scores.composite * 100)}
                       <small>score</small>
@@ -267,6 +267,8 @@ export function AnalysisResults({
                         "low_confidence",
                         "jev_failed",
                         "effort_uncertain",
+                        "estimates_accurate",
+                        "misses_bottleneck",
                       ].includes(f),
                     )
                     .map((f) => (
@@ -287,6 +289,10 @@ export function AnalysisResults({
                                 "Jev could not review this option; retry Jev to include it.",
                               effort_uncertain:
                                 "Jev was unsure how much effort this takes in your environment; check the prerequisites.",
+                              estimates_accurate:
+                                "The row estimates in this actual plan are already accurate, so refreshing statistics cannot fix it. Not offered as a first action.",
+                              misses_bottleneck:
+                                "Safe, but it does not attack the main bottleneck as directly as another option. Kept as an alternative.",
                             } as Record<string, string>
                           )[f]
                         }
@@ -395,6 +401,12 @@ export function AnalysisResults({
                       </ul>
                     </div>
                   </div>
+                  {scores && verdict?.status !== "unavailable" && (
+                    <p className="score-caption">
+                      How Jev scored this option on each question. These are not
+                      the decision certainty shown at the top.
+                    </p>
+                  )}
                   {scores && verdict?.status !== "unavailable" && (
                     <div className="score-grid">
                       {Object.entries(scores.dims).map(([key, d]) => (
