@@ -401,3 +401,77 @@ test("a diagnostic that only reads system views is recognised; anything that wri
   ])
     assert.ok(!isSystemReadOnly(sql), sql);
 });
+
+test("a SARGable rewrite may ship with the index it seeks on, and that index is checked too", async () => {
+  // From real runs: the rewrite and the index were offered separately, neither fixed the scan alone, and
+  // Jev's pick drifted between runs. They are one option now.
+  const ns = load("non-sargable.sqlplan");
+  const both = (sql: string) =>
+    checkCandidateSql({ option_type: "rewrite", sql_to_run: sql }, ns);
+  const ok = both(
+    "CREATE NONCLUSTERED INDEX IX_Orders_OrderDate2 ON dbo.Orders (OrderDate) INCLUDE (OrderId); SELECT o.OrderId FROM dbo.Orders o WHERE o.OrderDate >= '2025-01-01' AND o.OrderDate < '2026-01-01';",
+  );
+  assert.deepEqual(ok.errors, []);
+  const invented = both(
+    "CREATE NONCLUSTERED INDEX IX_X ON dbo.Orders (MadeUpColumn); SELECT o.OrderId FROM dbo.Orders o WHERE o.OrderDate >= '2025-01-01' AND o.OrderDate < '2026-01-01';",
+  );
+  assert.ok(
+    invented.errors.some((e) => /MadeUpColumn/.test(e)),
+    "the index in a combined option is validated like any index",
+  );
+  // Index DDL plus a query is not pure DDL, so it never earns the rule-based "same rows" score.
+  const { ruleDims } = await import("../lib/jev.ts");
+  const base = {
+    key: "k",
+    title: "t",
+    diagnosis: "d",
+    actions: [],
+    expected: "e",
+    rejected_reasons: [],
+    rollback: ["DROP INDEX"],
+  } as any;
+  assert.deepEqual(
+    ruleDims({
+      ...base,
+      option_type: "index",
+      sql_to_run:
+        "CREATE NONCLUSTERED INDEX IX_A ON dbo.Orders (OrderDate); SELECT 1 FROM dbo.Orders;",
+    }),
+    {},
+  );
+  assert.equal(
+    ruleDims({
+      ...base,
+      option_type: "index",
+      sql_to_run: "CREATE NONCLUSTERED INDEX IX_A ON dbo.Orders (OrderDate);",
+    }).semantic_safety?.source,
+    "rule",
+  );
+});
+
+test("GO batch separators and columns the same script creates are understood", () => {
+  // From real runs: DeepSeek wrote the index and the rewrite as separate batches with GO, and the
+  // computed-column option indexed the column its own ALTER TABLE added. Both were rejected as invalid.
+  const ns = load("non-sargable.sqlplan");
+  const check = (option_type: string, sql: string) =>
+    checkCandidateSql({ option_type, sql_to_run: sql }, ns).errors;
+  assert.deepEqual(
+    check(
+      "rewrite",
+      "CREATE NONCLUSTERED INDEX IX_Orders_OrderDate2 ON dbo.Orders (OrderDate);\nGO\nSELECT o.OrderId FROM dbo.Orders o WHERE o.OrderDate >= '2025-01-01' AND o.OrderDate < '2026-01-01';",
+    ),
+    [],
+  );
+  assert.deepEqual(
+    check(
+      "schema",
+      "ALTER TABLE dbo.Orders ADD OrderYear AS YEAR(OrderDate) PERSISTED;\nGO\nCREATE INDEX IX_Orders_OrderYear ON dbo.Orders (OrderYear);",
+    ),
+    [],
+  );
+  assert.ok(
+    check("index", "CREATE INDEX IX_Orders_Bogus ON dbo.Orders (NotAColumn);")
+      .length,
+    "a column nothing creates is still rejected",
+  );
+});

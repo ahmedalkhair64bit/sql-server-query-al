@@ -19,7 +19,7 @@ import { createHash } from "node:crypto";
  * Bump when the analysis pipeline changes what it would answer (prompts, rules, thresholds), so results
  * from before the change are not reused.
  */
-export const PIPELINE_VERSION = "2026-09-26";
+export const PIPELINE_VERSION = "2026-09-26.2";
 
 /**
  * Identifies an identical request: the exact evidence the models would see (after the privacy setting),
