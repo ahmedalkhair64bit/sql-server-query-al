@@ -136,9 +136,43 @@ const OPTION_TYPES: Record<string, string> = {
   design: "schema",
   table_design: "schema",
 };
+const EFFORT: Record<string, string> = {
+  low: "low",
+  minimal: "low",
+  trivial: "low",
+  small: "low",
+  easy: "low",
+  quick: "low",
+  medium: "medium",
+  moderate: "medium",
+  mid: "medium",
+  high: "high",
+  large: "high",
+  significant: "high",
+  major: "high",
+  hard: "high",
+};
 function normalizeCandidate(c: unknown): unknown {
   if (!c || typeof c !== "object") return c;
   const o = { ...(c as Record<string, unknown>) };
+  // "Low", "minimal", "moderate": measured on a real run, one of these in every option discarded them all.
+  if (Array.isArray(o.actions))
+    o.actions = o.actions.map((a) =>
+      a &&
+      typeof a === "object" &&
+      typeof (a as { effort?: unknown }).effort === "string"
+        ? {
+            ...(a as object),
+            effort:
+              EFFORT[
+                (a as { effort: string }).effort
+                  .trim()
+                  .toLowerCase()
+                  .split(/[\s/-]/)[0]
+              ] ?? "medium",
+          }
+        : a,
+    );
   if (typeof o.option_type === "string") {
     const t = o.option_type
       .trim()
@@ -323,7 +357,18 @@ export async function proposeCandidates(
     );
   if (!content.trim())
     throw new AnalystError("The analyst model returned an empty answer.");
-  const raw = (cutOff ? { candidates: salvaged } : extractJson(content)) as {
+  const parse = () => {
+    if (cutOff) return { candidates: salvaged };
+    try {
+      return extractJson(content);
+    } catch (e) {
+      // Malformed or unclosed JSON without a cut-off (seen on real runs): keep the complete options.
+      const partial = salvageCandidates(content);
+      if (partial.length >= minOptions) return { candidates: partial };
+      throw e;
+    }
+  };
+  const raw = parse() as {
     candidates?: unknown[];
     insufficient_evidence?: string;
   };
@@ -335,7 +380,7 @@ export async function proposeCandidates(
     const one = RawCandidate.safeParse(normalizeCandidate(c));
     if (one.success) valid.push(one.data);
     else
-      firstIssue ??= `${one.error.issues[0].path.join(".")}: ${one.error.issues[0].message}`;
+      firstIssue ??= `${valid.length}.${one.error.issues[0].path.join(".")}: ${one.error.issues[0].message}`;
   }
   const parsed = {
     data: {

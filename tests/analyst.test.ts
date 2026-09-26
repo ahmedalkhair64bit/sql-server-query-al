@@ -465,3 +465,39 @@ test("the complete options before a cut-off are kept", async () => {
   );
   assert.equal(single.length, 1);
 });
+
+test("complete options survive malformed JSON that was not cut off", async () => {
+  const { proposeCandidates } = await import("../lib/analyst.ts");
+  const [a, b] = CANDS.candidates;
+  const broken =
+    '{"candidates":[' +
+    JSON.stringify(a) +
+    "," +
+    JSON.stringify(b) +
+    ',{"key":"x",';
+  const out = await proposeCandidates(cfg, digest, "", answer(broken, "stop"));
+  assert.equal(out.length, 2);
+});
+
+test("effort values written in words are normalised", async () => {
+  const { proposeCandidates } = await import("../lib/analyst.ts");
+  const [a, b] = CANDS.candidates;
+  const withEffort = (c: any, effort: string) => ({
+    ...c,
+    actions: c.actions.map((x: any) => ({ ...x, effort })),
+  });
+  const out = await proposeCandidates(
+    cfg,
+    digest,
+    "",
+    answer(
+      JSON.stringify({
+        candidates: [withEffort(a, "Low"), withEffort(b, "moderate")],
+      }),
+    ),
+  );
+  assert.deepEqual(
+    out.map((c) => c.actions[0].effort),
+    ["low", "medium"],
+  );
+});

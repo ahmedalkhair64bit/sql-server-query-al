@@ -1,0 +1,16 @@
+<ShowPlanXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Version="1.5" Build="13.0.1601.5" xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan">
+  <BatchSequence>
+    <Batch>
+      <Statements>
+        <StmtCond StatementCompId="1" StatementId="1" StatementText="IF 1 = 1" StatementType="COND" RetrievedFromCache="false">
+          <Condition />
+          <Then>
+            <Statements>
+              <StmtSimple StatementCompId="2" StatementId="2" StatementText=" PRINT 'aa'" StatementType="PRINT" RetrievedFromCache="false" />
+            </Statements>
+          </Then>
+        </StmtCond>
+      </Statements>
+    </Batch>
+  </BatchSequence>
+</ShowPlanXML>

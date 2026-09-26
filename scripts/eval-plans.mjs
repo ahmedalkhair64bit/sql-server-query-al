@@ -81,7 +81,7 @@ const { parsePlanText, recommendStatement } =
 const { decodeBytes } = await import("../lib/plan-decoder.mjs");
 const { proposeCandidates } = await import("../lib/analyst.ts");
 const { judgeCandidates, makeJevClient } = await import("../lib/jev.ts");
-const { ruleOptions, withRuleOptions } =
+const { ruleOptions, withRuleOptions, fastQueryReason } =
   await import("../lib/rule-options.mjs");
 const { checkCandidateSql } = await import("../lib/sql-check.mjs");
 
@@ -120,12 +120,30 @@ async function runCase({ dir, c }) {
         check_warnings: check.warnings,
       };
     });
+    // Fast queries are decided by rule, as in the app (unless the case carries a note).
+    const fast = c.note ? null : fastQueryReason(digest);
+    if (fast) throw new Error(`Insufficient evidence: ${fast}`);
     let modelOptions = [];
     try {
-      modelOptions = await proposeCandidates(analyst, digest, c.note ?? "");
+      modelOptions = await proposeCandidates(
+        analyst,
+        digest,
+        c.note ?? "",
+        undefined,
+        undefined,
+        {
+          minOptions: rules.length ? 1 : 2,
+          alreadyProposed: rules.map((o) => ({
+            title: o.title,
+            option_type: o.option_type,
+            sql: o.sql_to_run,
+          })),
+        },
+      );
     } catch (e) {
       if (!rules.length) throw e;
-      row.analystError = e.message.slice(0, 200);
+      if (!/^Insufficient evidence/.test(e.message))
+        row.analystError = e.message.slice(0, 200);
     }
     const candidates = withRuleOptions(rules, modelOptions);
     const verdict = await judgeCandidates(

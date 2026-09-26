@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<ShowPlanXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Version="1.5" Build="13.0.1601.5" xmlns="http://schemas.microsoft.com/sqlserver/2004/07/showplan">
+  <BatchSequence>
+    <Batch>
+      <Statements>
+        <StmtUseDb StatementCompId="1" StatementId="1" StatementText="USE Master" StatementType="USE DATABASE" RetrievedFromCache="false" Database="[Master]" />
+      </Statements>
+    </Batch>
+  </BatchSequence>
+</ShowPlanXML>

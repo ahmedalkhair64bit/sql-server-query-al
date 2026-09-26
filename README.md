@@ -288,6 +288,14 @@ The interface follows the locked design system in [`design.md`](design.md): OKLC
 
 Built with Next.js, React, SQLite, a streaming XML parser, and the TypeSafe SDK.
 
+### How the analysis is kept trustworthy
+
+The analysis has three layers, and only the last one involves AI.
+
+1. **Parser (deterministic, verified).** `npm run verify:parser` compares every number the digest gives the models with an independent reading of the same plans (`scripts/verify-parser.py`, Python's ElementTree, no shared code): statement text and cost, each reported operator's subtree and own cost, rows, executions, reads, object and lookup flag, and that the costliest, slowest and most-read operators are among those reported. Point it at any folder of plans (`node scripts/verify-parser.mjs <folder>`). Measured on 80 plans (54 real plans from the [html-query-plan](https://github.com/JustinPealing/html-query-plan) test suite, vendored under MIT in `fixtures/external/`, three production plans, and our own fixtures): 90 statements, 426 operators, 4,290 fields, 0 disagreements.
+2. **Findings and rule-built options (deterministic).** Rules turn the plan into findings, and for patterns whose fix the plan determines they write the complete option themselves (`lib/rule-options.mjs`): the index an eager spool keeps building (keys, order and INCLUDE columns from the spool), a covering index for a key lookup, a `YEAR(col) = N` range rewrite together with the index it needs, the optimizer's missing-index request, and `OPTION (RECOMPILE)` for parameter sniffing or an unmatched filtered index. Each states the measured cost of what it fixes. An actual plan that ran in under 100 ms gets "no change needed" without calling the models.
+3. **Analyst and Jev (AI).** The analyst model adds different alternatives (it is told what the rules already proposed); Jev judges all options together and decides. Identical requests reuse the stored result, so the same plan gives the same action plan.
+
 ### Measuring recommendation quality
 
 `fixtures/eval/` holds plans with known answers. `npm test` checks that the rule-based findings detect each problem. To measure the models themselves:
@@ -301,4 +309,10 @@ It reports how often Jev picks a correct fix type, and declines on the healthy p
 
 To test Jev on its own, without an analyst key, `JEV_API_KEY=... npm run eval:jev` gives the real Jev a fixed set of options per plan: one correct fix, a plausible decoy, and sometimes a risky option such as NOLOCK or a rewrite that changes results. Measured on 2026-09-25 with `jev-latest`: correct on 16 of 17 plans. It declined on the healthy plan, picked "find the blocker" over an index on the blocking plan, and flagged every risky option. The one miss (parallel skew) was a decline: Jev judged the "investigate the skew" option as not well supported by the evidence. Add your own anonymized plans to `fixtures/eval/private/` (gitignored) with a `cases.json` in the same shape. `npm run eval:plans -- --outcomes data/qai.db` reports real outcomes from saved before/after comparisons.
 
-Full pipeline, measured on 2026-09-25 with DeepSeek V4-Pro as the analyst (maximum response length 32,000) and `jev-latest`, on 22 plans. The latest full run scored 18 of 22 (82%); the run before it scored 14 of 22 with the same code, so single runs vary by several plans. The analyst proposed a correct option on all 22. A read-only diagnostic on system views is now judged safe by rule, which fixed blocking-waits on re-run. The two plans that still fail on re-runs are genuine disagreements: on row-goal Jev prefers a statistics update over the rewrite or index, and on unmatched-filtered-index it prefers a new covering index over fixing the parameterization that stops the existing filtered index being used. Reasoning models like DeepSeek take 2 to 5 minutes per analysis.
+Full pipeline with rule-built options, measured on 2026-09-27 with DeepSeek Flash and `jev-latest`:
+
+- **Accuracy** on the 23 plans in `fixtures/eval`: 17 of 23 (74%); a correct option was on the table in 91% of cases. Most misses are defensible alternatives (a covering index instead of `OPTION (RECOMPILE)`, a subquery rewrite instead of the spool index). An earlier V4-Pro run without rule options scored 18 of 22.
+- **Consistency**, 18 real plans analysed twice from scratch (reuse disabled): the same pick on both runs for 10 of 18 (3 of 18 before rule options), the same kind of fix on the same table for 12 of 18; the rest are close calls where Jev's certainty is below 0.6, which the report says. In the app, analysing the same plan again reuses its result.
+- **Robustness**: analyst failures on those 36 runs went from 2 to 1, and the remaining kind (malformed JSON) is now salvaged too.
+
+Reasoning models like DeepSeek take 30 seconds to 2 minutes per analysis.
