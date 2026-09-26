@@ -311,10 +311,10 @@ It reports how often Jev picks a correct fix type, and declines on the healthy p
 
 To test Jev on its own, without an analyst key, `JEV_API_KEY=... npm run eval:jev` gives the real Jev a fixed set of options per plan: one correct fix, a plausible decoy, and sometimes a risky option such as NOLOCK or a rewrite that changes results. Measured on 2026-09-25 with `jev-latest`: correct on 16 of 17 plans. It declined on the healthy plan, picked "find the blocker" over an index on the blocking plan, and flagged every risky option. The one miss (parallel skew) was a decline: Jev judged the "investigate the skew" option as not well supported by the evidence. Add your own anonymized plans to `fixtures/eval/private/` (gitignored) with a `cases.json` in the same shape. `npm run eval:plans -- --outcomes data/qai.db` reports real outcomes from saved before/after comparisons.
 
-Full pipeline with rule-built options, measured on 2026-09-27 with DeepSeek Flash and `jev-latest`:
+Full pipeline with rule-built options, measured on 2026-09-26 with DeepSeek Flash and `jev-latest`:
 
-- **Accuracy** on the 23 plans in `fixtures/eval`: 17 of 23 (74%); a correct option was on the table in 91% of cases. Most misses are defensible alternatives (a covering index instead of `OPTION (RECOMPILE)`, a subquery rewrite instead of the spool index). An earlier V4-Pro run without rule options scored 18 of 22.
-- **Consistency**, 18 real plans analysed twice from scratch (reuse disabled): the same pick on both runs for 10 of 18 (3 of 18 before rule options), the same kind of fix on the same table for 12 of 18; the rest are close calls where Jev's certainty is below 0.6, which the report says. In the app, analysing the same plan again reuses its result.
-- **Robustness**: analyst failures on those 36 runs went from 2 to 1, and the remaining kind (malformed JSON) is now salvaged too.
+- **Accuracy** on the 23 plans in `fixtures/eval`: 18 of 23 (78%, up from 17); a correct option was on the table in every case (up from 91%), and Jev never declined when a fix existed. The five misses are defensible alternatives: a covering index instead of `OPTION (RECOMPILE)` on the parameter-sniffing and unmatched-filtered-index plans, an application fix for a scalar UDF, statistics before an index on a complex report, and an index instead of batching an archive insert.
+- **Consistency**, 18 real plans analysed twice from scratch (reuse disabled): the same kind of fix on both runs for 12 of 18 (3 of 18 before rule options), the identical option for 8 of 18. The rest are close calls where Jev's certainty is low, which the report says. In the app, analysing the same plan again reuses its result, so a DBA sees one answer per plan.
+- **Robustness**: 0 analyst failures on those 36 runs (2 before); cut-off or malformed JSON is salvaged option by option.
 
 Reasoning models like DeepSeek take 30 seconds to 2 minutes per analysis.
