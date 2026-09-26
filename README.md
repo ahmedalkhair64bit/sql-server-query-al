@@ -167,6 +167,8 @@ Saved keys are never shown again. **Leaving a key field empty keeps the saved ke
 
 An analysis runs on the server, not in your browser tab: you can open Settings or another report while it runs, and its report fills in when it finishes (open it from history to watch its progress). **Stop analysis** ends a run on purpose; **Run again** restarts a stopped, failed or interrupted analysis from the same plan and note, with no new upload.
 
+**Same plan, same answer.** Analysing a statement again with the same context note and the same model settings opens the earlier report instead of asking the models again, so the action plan does not change between runs and costs nothing. **Run again anyway** on that report asks the models afresh. The analyst is called with `temperature: 0` by default so fresh runs vary as little as the model allows; you can override it under the analyst's extra request parameters.
+
 You can also reopen saved reports, rename or delete history entries, copy SQL, and use **Export to PDF** through your browser's print dialog.
 
 ## Your data and credentials

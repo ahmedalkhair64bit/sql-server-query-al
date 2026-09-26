@@ -165,7 +165,7 @@ export function Runner() {
         if (e.event === "done") {
           complete = true;
           setStage(null);
-          router.push(`/app/${e.data.id}`);
+          router.push(`/app/${e.data.id}${e.data.reused ? "?reused=1" : ""}`);
           router.refresh();
         }
       }

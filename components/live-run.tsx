@@ -43,7 +43,15 @@ export function LiveRun({
 }
 
 /** Runs a finished, stopped or interrupted analysis again from its stored evidence: no upload needed. */
-export function RunAgain({ id }: { id: string }) {
+export function RunAgain({
+  id,
+  label = "Run again",
+  hint = "Uses the same plan and context note.",
+}: {
+  id: string;
+  label?: string;
+  hint?: string;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -57,14 +65,16 @@ export function RunAgain({ id }: { id: string }) {
           "Could not start the analysis.",
       );
     setBusy(false);
+    // Drop ?reused=1: the report is running again, not a reused result any more.
+    router.replace(`/app/${id}`);
     router.refresh();
   }
   return (
     <div className="run-again no-print">
       <button className="btn btn-primary" onClick={again} disabled={busy}>
-        {busy ? "Starting…" : "Run again"}
+        {busy ? "Starting…" : label}
       </button>
-      <span className="muted">Uses the same plan and context note.</span>
+      <span className="muted">{hint}</span>
       {error && (
         <p role="alert" className="report-alert danger">
           {error}
