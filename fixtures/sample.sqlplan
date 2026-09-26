@@ -10,7 +10,7 @@
       <RunTimeInformation><RunTimeCountersPerThread Thread="0" ActualRows="1243500" ActualExecs="1"
         ActualElapsedms="2411" ActualCPUms="2210"/></RunTimeInformation>
       <IndexScan Database="[wide]" Schema="[Sales]" Table="[Orders]"/>
-      <Warnings><NoJoinPredicate/><SpillToTempDb SpillLevel="2"/>
+      <Warnings NoJoinPredicate="1"><SpillToTempDb SpillLevel="2"/>
         <WaitTime WaitType="PAGEIOLATCH_SH" WaitTime="812"/></Warnings>
     </RelOp>
     <RelOp NodeId="1" PhysicalOp="Index Seek" LogicalOp="Index Seek" EstimateRows="3"

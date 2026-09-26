@@ -15,7 +15,8 @@
     "eval:plans": "node --no-warnings scripts/eval-plans.mjs",
     "eval:jev": "node --no-warnings scripts/eval-jev.mjs",
     "stress:parser": "node --no-warnings scripts/stress-parser.mjs",
-    "stress:api": "node --no-warnings scripts/stress-api.mjs"
+    "stress:api": "node --no-warnings scripts/stress-api.mjs",
+    "verify:parser": "node --no-warnings scripts/verify-parser.mjs fixtures"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
