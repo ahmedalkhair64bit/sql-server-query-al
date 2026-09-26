@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { analystConfig, jevKey } from "@/lib/settings";
 import { sse } from "@/lib/stream";
-import { newAnalysis, patchAnalysis } from "@/lib/db";
+import { newAnalysis, patchAnalysis, findReusable } from "@/lib/db";
 import {
   ingestPlan,
   ownedPlan,
@@ -10,6 +10,7 @@ import {
 } from "@/lib/server/plans";
 import {
   startAnalysis,
+  runKey,
   runningCount,
   MAX_RUNNING_PER_USER,
 } from "@/lib/server/jobs";
@@ -30,6 +31,8 @@ export async function POST(req: Request) {
     statementId?: string;
     xml?: string;
     note?: string;
+    /** Ask the models again even when an identical request already has a result. */
+    force?: boolean;
   };
   try {
     const reader = req.body?.getReader();
@@ -76,6 +79,27 @@ export async function POST(req: Request) {
         { error: "Select a statement first." },
         { status: 400 },
       );
+    const digestForKey = await statementDigest(planId, statementId);
+    const noteForKey = String(body.note ?? "").slice(0, 2000);
+    // An identical request (same evidence, note and models) opens its finished report: same plan in, same
+    // action plan out, and no model cost. "Run again anyway" on that report asks the models again.
+    if (!body.force) {
+      const earlier = findReusable(
+        u.id,
+        runKey(u.id, digestForKey, noteForKey),
+      );
+      if (earlier)
+        return new Response(
+          sse("created", { id: earlier.id, reused: true }) +
+            sse("done", { id: earlier.id, reused: true }),
+          {
+            headers: {
+              "content-type": "text/event-stream; charset=utf-8",
+              "cache-control": "no-store",
+            },
+          },
+        );
+    }
     if (runningCount(u.id) >= MAX_RUNNING_PER_USER)
       return Response.json(
         {
@@ -83,8 +107,8 @@ export async function POST(req: Request) {
         },
         { status: 429 },
       );
-    const digest = await statementDigest(planId, statementId);
-    const note = String(body.note ?? "").slice(0, 2000);
+    const digest = digestForKey;
+    const note = noteForKey;
     const id = newAnalysis(
       u.id,
       note.trim().slice(0, 120) || digest.sql.slice(0, 100) || "Plan analysis",

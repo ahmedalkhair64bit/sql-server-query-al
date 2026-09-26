@@ -163,7 +163,9 @@ export async function proposeCandidates(
       },
       body: JSON.stringify({
         model: cfg.model,
-        temperature: 0.6,
+        // 0 so the same plan gets the same options: users saw a different action plan on every run at 0.6.
+        // "Extra request parameters" in Settings can still override it.
+        temperature: 0,
         ...cfg.extra,
         max_tokens: maxTokens,
         stream: false,

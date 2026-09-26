@@ -40,6 +40,12 @@ function openDb(): DatabaseSync {
   if (!cols.has("comparison"))
     d.exec("ALTER TABLE analyses ADD COLUMN comparison TEXT");
   if (!cols.has("note")) d.exec("ALTER TABLE analyses ADD COLUMN note TEXT");
+  // Identifies an identical request (same evidence, note and models) so its finished result is reused.
+  if (!cols.has("run_key"))
+    d.exec("ALTER TABLE analyses ADD COLUMN run_key TEXT");
+  d.exec(
+    "CREATE INDEX IF NOT EXISTS ix_analyses_run_key ON analyses(user_id, run_key)",
+  );
   const settingCols = new Set(
     (d.prepare("PRAGMA table_info(settings)").all() as { name: string }[]).map(
       (c) => c.name,
@@ -97,6 +103,8 @@ export type Analysis = {
   created_at: number;
   comparison: string | null;
   note: string | null;
+  updated_at: number;
+  run_key: string | null;
 };
 
 export function createUser(email: string, passHash: string): string {
@@ -231,6 +239,7 @@ const PATCHABLE = new Set([
   "title",
   "comparison",
   "note",
+  "run_key",
 ]);
 export function patchAnalysis(id: string, p: Record<string, string>) {
   const keys = Object.keys(p).filter((k) => PATCHABLE.has(k));
@@ -252,6 +261,13 @@ export const listAnalyses = (userId: string) =>
       created_at: number;
     }[]
   ).map((r) => ({ ...r }));
+/** The newest finished analysis for an identical request, if any. */
+export const findReusable = (userId: string, runKey: string) =>
+  one<{ id: string; updated_at: number }>(
+    "SELECT id, updated_at FROM analyses WHERE user_id = ? AND run_key = ? AND status = 'done' AND verdict IS NOT NULL AND verdict <> '' ORDER BY updated_at DESC LIMIT 1",
+    userId,
+    runKey,
+  );
 export const getAnalysis = (id: string, userId: string) =>
   one<Analysis>(
     "SELECT * FROM analyses WHERE id = ? AND user_id = ?",

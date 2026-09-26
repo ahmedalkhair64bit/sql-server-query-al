@@ -40,3 +40,32 @@ test("an analysis keeps running when you leave the page, and a stopped one can r
   await expect(page.locator("[data-verdict]")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole("button", { name: "Run again" })).toHaveCount(0);
 });
+
+// Reported from use: the same plan gave a different action plan on every run. An identical request (same
+// evidence, note and models) now opens the earlier report; "Run again anyway" asks the models again.
+test("analysing the same plan again opens the earlier report, and Run again anyway asks again", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const analyse = async () => {
+    await page.goto("/app");
+    await page.setInputFiles("input[type=file]", "fixtures/sample.sqlplan");
+    await expect(page.locator("#statement")).toBeVisible();
+    await page.fill("#note", "qa same plan twice");
+    await page.getByRole("button", { name: "Analyse plan" }).click();
+    await expect(page.locator("[data-verdict]")).toBeVisible({
+      timeout: 60_000,
+    });
+    return page.url().replace(/\?.*$/, "");
+  };
+  const first = await analyse();
+  await expect(page.locator(".reused-note")).toHaveCount(0);
+  const second = await analyse();
+  expect(second).toBe(first);
+  await expect(page.locator(".reused-note")).toContainText(
+    "Same plan, same answer",
+  );
+  await page.getByRole("button", { name: "Run again anyway" }).click();
+  await expect(page.locator(".reused-note")).toHaveCount(0);
+  await expect(page.locator("[data-verdict]")).toBeVisible({ timeout: 60_000 });
+});

@@ -161,7 +161,8 @@ const upload = async (body, name = "stress.sqlplan") => {
   return { status: r.status, data: await r.json() };
 };
 // Runs one analysis and reads the event stream to the end.
-async function analyze(plan, note = "", { abortAfterMs } = {}) {
+// force: ask the models even if an identical request has a result (every scenario but the reuse one).
+async function analyze(plan, note = "", { abortAfterMs, force = true } = {}) {
   const started = performance.now();
   const ac = new AbortController();
   if (abortAfterMs) setTimeout(() => ac.abort(), abortAfterMs);
@@ -174,6 +175,7 @@ async function analyze(plan, note = "", { abortAfterMs } = {}) {
         planId: plan.id,
         statementId: plan.recommended,
         note,
+        force,
       }),
       signal: ac.signal,
     });
@@ -199,6 +201,7 @@ async function analyze(plan, note = "", { abortAfterMs } = {}) {
   return {
     ms: performance.now() - started,
     id: events.created?.id,
+    reused: !!events.created?.reused,
     verdict: events.verdict?.status,
     flags: events.verdict?.flags ?? [],
     error: events.error?.message,
@@ -397,6 +400,28 @@ for (const [fault, ok, label] of FAULTS) {
       again?.status === 200 &&
       rerun === "done",
     `stop ${stop?.status} -> "${stopped}", rerun ${again?.status} -> "${rerun}"`,
+  );
+}
+
+// 4b. Same plan, same note, same models: the first run asks the models, the next two open its report (no
+// model call), even from fresh uploads of the file. force asks again.
+{
+  const note = "qa reuse check";
+  const runs = [];
+  for (let i = 0; i < 3; i++) {
+    const fresh = (await upload(sample, "reuse.sqlplan")).data;
+    runs.push(await analyze(fresh, note, { force: false }));
+  }
+  const forced = await analyze(plan, note, { force: true });
+  check(
+    "same plan analysed again reuses its report",
+    runs[0].verdict &&
+      !runs[0].reused &&
+      runs.slice(1).every((r) => r.reused && r.id === runs[0].id) &&
+      Math.max(...runs.slice(1).map((r) => r.ms)) < 1000 &&
+      !forced.reused &&
+      forced.id !== runs[0].id,
+    `ids ${runs.map((r) => r.id?.slice(0, 8)).join(", ")}; reused ${runs.map((r) => r.reused).join("/")}; ${Math.round(runs[1].ms)} ms; forced new run ${!forced.reused}`,
   );
 }
 

@@ -2281,3 +2281,17 @@ a.model-badge:hover {
 .score-caption {
   margin-top: var(--qai-space-l);
 }
+
+/* ---- a reused result ---- */
+.reused-note {
+  display: grid;
+  gap: var(--qai-space-md);
+  padding: 14px 16px;
+  border: 1px solid var(--qai-rule);
+  border-radius: var(--qai-radius);
+  background: var(--qai-paper-2);
+}
+.reused-note p {
+  margin: 0;
+  font-size: var(--qai-text-sm);
+}

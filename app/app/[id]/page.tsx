@@ -9,8 +9,10 @@ import { runningJob } from "@/lib/server/jobs";
 
 export default async function Stored({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ reused?: string }>;
 }) {
   const u = await requireUser();
   const a = getAnalysis((await params).id, u.id);
@@ -19,6 +21,7 @@ export default async function Stored({
   // A run lives in this process: "running" with no job means a restart interrupted it.
   const job = a.status === "running" ? runningJob(a.id) : null;
   const interrupted = a.status === "running" && !job;
+  const reused = (await searchParams).reused === "1" && a.status === "done";
   const canRerun =
     !job &&
     a.status !== "done" &&
@@ -43,6 +46,24 @@ export default async function Stored({
         </p>
       )}
       {canRerun && <RunAgain id={a.id} />}
+      {reused && (
+        <div className="reused-note" role="status">
+          <p>
+            <strong>Same plan, same answer.</strong> This statement was already
+            analysed with the same context note and models on{" "}
+            {new Date(a.updated_at).toLocaleString("en-GB", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+            , so this is that result rather than a new call to the models.
+          </p>
+          <RunAgain
+            id={a.id}
+            label="Run again anyway"
+            hint="Asks the models again; the result may differ."
+          />
+        </div>
+      )}
       {modern && (
         <AnalysisResults
           id={a.id}

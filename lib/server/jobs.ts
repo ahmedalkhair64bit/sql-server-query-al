@@ -13,6 +13,36 @@ import {
 } from "../jev.ts";
 import { patchAnalysis } from "../db.ts";
 import type { Digest } from "../digest.ts";
+import { createHash } from "node:crypto";
+
+/**
+ * Bump when the analysis pipeline changes what it would answer (prompts, rules, thresholds), so results
+ * from before the change are not reused.
+ */
+export const PIPELINE_VERSION = "2026-09-26";
+
+/**
+ * Identifies an identical request: the exact evidence the models would see (after the privacy setting),
+ * the note, both models' settings, and the pipeline version. Same key, same answer: the stored result is
+ * reused instead of asking the models again. Reported from use: the same plan gave a different action plan
+ * on every run, which made the tool look unreliable.
+ */
+export function runKey(userId: string, digest: Digest, note: string): string {
+  const analyst = analystConfig(userId);
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        PIPELINE_VERSION,
+        digestForModels(userId, digest),
+        note.trim(),
+        analyst?.baseUrl,
+        analyst?.model,
+        analyst?.extra,
+        jevModel(userId),
+      ]),
+    )
+    .digest("hex");
+}
 
 // An analysis runs on the server, not inside the page that started it. Leaving the page, opening
 // Settings or another report only stops *watching*; the run continues and its report fills in. Reported
@@ -84,7 +114,8 @@ export function startAnalysis(
     listeners: new Set(first ? [first] : []),
   };
   jobs.set(opts.id, job);
-  patchAnalysis(opts.id, { status: "running", error: "" });
+  // Cleared until this run finishes: a stopped or failed run must not be reused.
+  patchAnalysis(opts.id, { status: "running", error: "", run_key: "" });
   const limit = setTimeout(() => job.ac.abort(), JOB_LIMIT_MS);
   void run(job, opts.digest, opts.note).finally(() => {
     clearTimeout(limit);
@@ -141,6 +172,7 @@ async function run(job: Job, digest: Digest, note: string) {
         candidates: "[]",
         verdict: JSON.stringify(verdict),
         status: "done",
+        run_key: runKey(userId, digest, note),
       });
       emit("candidates", []);
       emit("verdict", verdict);
@@ -167,7 +199,15 @@ async function run(job: Job, digest: Digest, note: string) {
       );
     }
     if (job.ac.signal.aborted) throw new Error("aborted");
-    patchAnalysis(id, { verdict: JSON.stringify(verdict), status: "done" });
+    // Only a complete decision is reused; one made while Jev was down or partial should be retried.
+    const complete =
+      verdict.status !== "unavailable" &&
+      !verdict.flags.includes("jev_partial");
+    patchAnalysis(id, {
+      verdict: JSON.stringify(verdict),
+      status: "done",
+      run_key: complete ? runKey(userId, digest, note) : "",
+    });
     emit("verdict", verdict);
     emit("done", { id });
   } catch (e) {
