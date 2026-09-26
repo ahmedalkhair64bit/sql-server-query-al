@@ -69,6 +69,8 @@ const FLAG_TEXT: Record<string, string> = {
   no_suitable_action: "Every option failed a safety, evidence or fit check.",
   jev_partial: "Jev could not review every option; retry to include them.",
   jev_unavailable: "Jev could not be reached, so nothing was selected.",
+  analyst_failed:
+    "The analyst model failed on this run, so Jev judged only the options built from the plan by rule.",
 };
 
 /** "45% vs 40%": Jev's pick against the runner-up, for a decision split between two good options. */
@@ -214,6 +216,11 @@ export function JevDecision({
             <li>
               <strong>{judged - blocked}</strong> passed every check
             </li>
+            {verdict.flags.includes("analyst_failed") && (
+              <li data-analyst-failed title={verdict.analyst_error}>
+                {FLAG_TEXT.analyst_failed}
+              </li>
+            )}
             {selected && verdict.flags.includes("split_decision") && (
               <li data-split>Close call: {closeCall(verdict)}</li>
             )}

@@ -4,7 +4,13 @@ import {
   jevModel,
   digestForModels,
 } from "../settings.ts";
-import { proposeCandidates, AnalystError } from "../analyst.ts";
+import { proposeCandidates, AnalystError, type Candidate } from "../analyst.ts";
+import {
+  ruleOptions,
+  withRuleOptions,
+  fastQueryReason,
+} from "../rule-options.mjs";
+import { checkCandidateSql } from "../sql-check.mjs";
 import {
   judgeCandidates,
   jevFallback,
@@ -19,7 +25,7 @@ import { createHash } from "node:crypto";
  * Bump when the analysis pipeline changes what it would answer (prompts, rules, thresholds), so results
  * from before the change are not reused.
  */
-export const PIPELINE_VERSION = "2026-09-26.2";
+export const PIPELINE_VERSION = "2026-09-27";
 
 /**
  * Identifies an identical request: the exact evidence the models would see (after the privacy setting),
@@ -148,26 +154,16 @@ async function run(job: Job, digest: Digest, note: string) {
     emit("digest", digest);
     stage("proposing");
     const modelDigest = digestForModels(userId, digest);
-    let candidates;
-    try {
-      candidates = await proposeCandidates(
-        analyst,
-        modelDigest,
-        note,
-        undefined,
-        job.ac.signal,
-      );
-    } catch (e) {
-      // The analyst saying there is nothing to fix is a result, not a failure.
-      if (
-        job.ac.signal.aborted ||
-        !(e instanceof AnalystError) ||
-        !/^Insufficient evidence/.test(e.message)
-      )
-        throw e;
-      const verdict = nothingToFix(
-        e.message.replace(/^Insufficient evidence:\s*/, ""),
-      );
+    // Options a rule can build from the plan itself (exact index for a spool, a key lookup, a YEAR() rewrite
+    // with its index...). Jev judges them next to the model's, so a correct complete option is on the table
+    // whatever the model writes. With the statement text withheld from the models, options that contain
+    // the rewritten statement are withheld too.
+    // A query that already runs in a few milliseconds needs no tuning, and asking the models anyway made
+    // them alternate between "healthy" and an invented fix on the same plan. Decided by rule, not by model.
+    // Unless the DBA gave context (for example "slow in production" on a plan captured on test data).
+    const fast = note.trim() ? null : fastQueryReason(digest);
+    if (fast) {
+      const verdict = nothingToFix(fast);
       patchAnalysis(id, {
         candidates: "[]",
         verdict: JSON.stringify(verdict),
@@ -179,6 +175,61 @@ async function run(job: Job, digest: Digest, note: string) {
       emit("done", { id });
       return;
     }
+    const withheld = modelDigest.sql !== digest.sql;
+    const rules = (ruleOptions(digest) as Candidate[])
+      .filter((o) => !(withheld && o.option_type === "rewrite"))
+      .map((o) => {
+        const check = checkCandidateSql(o, digest);
+        return {
+          ...o,
+          rejected_reasons: check.errors,
+          check_warnings: check.warnings,
+        } as Candidate;
+      });
+    let modelOptions: Candidate[] = [];
+    let analystError: string | null = null;
+    try {
+      modelOptions = await proposeCandidates(
+        analyst,
+        modelDigest,
+        note,
+        undefined,
+        job.ac.signal,
+        {
+          minOptions: rules.length ? 1 : 2,
+          alreadyProposed: rules.map((o) => ({
+            title: o.title,
+            option_type: o.option_type,
+            sql: o.sql_to_run,
+          })),
+        },
+      );
+    } catch (e) {
+      if (job.ac.signal.aborted) throw e;
+      const insufficient =
+        e instanceof AnalystError && /^Insufficient evidence/.test(e.message);
+      // The model failing does not sink the analysis when the plan itself says what to fix.
+      if (rules.length) {
+        if (!insufficient) analystError = (e as Error).message;
+      } else if (!insufficient) throw e;
+      else {
+        // The analyst finding nothing to fix, and no rule finding a fix, is a result.
+        const verdict = nothingToFix(
+          (e as Error).message.replace(/^Insufficient evidence:\s*/, ""),
+        );
+        patchAnalysis(id, {
+          candidates: "[]",
+          verdict: JSON.stringify(verdict),
+          status: "done",
+          run_key: runKey(userId, digest, note),
+        });
+        emit("candidates", []);
+        emit("verdict", verdict);
+        emit("done", { id });
+        return;
+      }
+    }
+    const candidates = withRuleOptions(rules, modelOptions) as Candidate[];
     patchAnalysis(id, { candidates: JSON.stringify(candidates) });
     emit("candidates", candidates);
     stage("judging");
@@ -199,10 +250,15 @@ async function run(job: Job, digest: Digest, note: string) {
       );
     }
     if (job.ac.signal.aborted) throw new Error("aborted");
-    // Only a complete decision is reused; one made while Jev was down or partial should be retried.
+    if (analystError) {
+      verdict.flags.push("analyst_failed");
+      verdict.analyst_error = analystError.slice(0, 500);
+    }
+    // Only a complete decision is reused; one made while Jev or the analyst failed should be retried.
     const complete =
       verdict.status !== "unavailable" &&
-      !verdict.flags.includes("jev_partial");
+      !verdict.flags.includes("jev_partial") &&
+      !analystError;
     patchAnalysis(id, {
       verdict: JSON.stringify(verdict),
       status: "done",

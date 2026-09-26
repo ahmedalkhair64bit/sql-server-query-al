@@ -93,6 +93,9 @@ addressed before warnings, and two options never attack the same finding the sam
   cannot be sought.
 - incomplete_execution means the run was cancelled, timed out or failed: counts are partial totals up to the stop.
   Diagnose where it was stuck; never present partial counts as the query's full cost.
+- already_proposed, when present, lists options built by rule from this plan; they are judged alongside yours.
+  Do not repeat, re-word or re-name them (the same index under another name is a repeat). Propose only genuinely
+  different approaches, at most 2, or return {"candidates":[]} when you have nothing different to add.
 - A healthy plan (no warning or critical findings, fast measured time) needs no change: return
   {"candidates":[],"insufficient_evidence":"No performance problem in this plan: ..."} rather than inventing work.
 user_note carries the DBA's constraints (for example "no schema changes" or "cannot change the application").
@@ -102,6 +105,120 @@ If fewer than two defensible options exist, return {"candidates":[],"insufficien
 Output ONE JSON object and nothing else:
 {"candidates":[{"key":"idx_covering_orders","title":"...","diagnosis":"...","actions":[{"title":"...","detail":"...",
 "effort":"low|medium|high","requires_change_control":false}],"option_type":"index","sql_to_run":"CREATE INDEX ...","expected":"...","evidence_ids":["exact ID from digest.evidence"],"prerequisites":["fact to verify"],"validation":["before/after comparison"],"rollback":["specific reversal or recovery step"]}]}`;
+
+// Near-miss values models write for option_type, mapped to the six the app understands.
+const OPTION_TYPES: Record<string, string> = {
+  query_rewrite: "rewrite",
+  query: "rewrite",
+  hint: "rewrite",
+  query_hint: "rewrite",
+  sql_rewrite: "rewrite",
+  code: "rewrite",
+  indexing: "index",
+  indexes: "index",
+  covering_index: "index",
+  stats: "statistics",
+  statistic: "statistics",
+  update_statistics: "statistics",
+  configuration: "ops",
+  config: "ops",
+  server: "ops",
+  maintenance: "ops",
+  monitoring: "ops",
+  investigate: "ops",
+  investigation: "ops",
+  diagnostic: "ops",
+  diagnostics: "ops",
+  application: "app",
+  application_change: "app",
+  client: "app",
+  schema_change: "schema",
+  design: "schema",
+  table_design: "schema",
+};
+const EFFORT: Record<string, string> = {
+  low: "low",
+  minimal: "low",
+  trivial: "low",
+  small: "low",
+  easy: "low",
+  quick: "low",
+  medium: "medium",
+  moderate: "medium",
+  mid: "medium",
+  high: "high",
+  large: "high",
+  significant: "high",
+  major: "high",
+  hard: "high",
+};
+function normalizeCandidate(c: unknown): unknown {
+  if (!c || typeof c !== "object") return c;
+  const o = { ...(c as Record<string, unknown>) };
+  // "Low", "minimal", "moderate": measured on a real run, one of these in every option discarded them all.
+  if (Array.isArray(o.actions))
+    o.actions = o.actions.map((a) =>
+      a &&
+      typeof a === "object" &&
+      typeof (a as { effort?: unknown }).effort === "string"
+        ? {
+            ...(a as object),
+            effort:
+              EFFORT[
+                (a as { effort: string }).effort
+                  .trim()
+                  .toLowerCase()
+                  .split(/[\s/-]/)[0]
+              ] ?? "medium",
+          }
+        : a,
+    );
+  if (typeof o.option_type === "string") {
+    const t = o.option_type
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+    o.option_type = OPTION_TYPES[t] ?? t;
+  }
+  return o;
+}
+
+/** The complete option objects in a response cut off part-way through its "candidates" array. */
+export function salvageCandidates(text: string): unknown[] {
+  const at = text.indexOf('"candidates"');
+  const open = at === -1 ? -1 : text.indexOf("[", at);
+  if (open === -1) return [];
+  const out: unknown[] = [];
+  let depth = 0,
+    start = -1,
+    inString = false,
+    escaped = false;
+  for (let i = open + 1; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        try {
+          out.push(JSON.parse(text.slice(start, i + 1)));
+        } catch {
+          /* an incomplete or malformed object: skip it */
+        }
+        start = -1;
+      }
+    } else if (ch === "]" && depth === 0) break;
+  }
+  return out;
+}
 
 export function extractJson(text: string): unknown {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
@@ -152,7 +269,18 @@ export async function proposeCandidates(
   note: string,
   fetchImpl: typeof fetch = guardedFetch,
   signal?: AbortSignal,
+  opts: {
+    /** Model options needed: 2 when the model is the only source, 1 when rule-built options are also judged. */
+    minOptions?: number;
+    /** Options already built by rule from this plan: the model adds different ones instead of re-wording them. */
+    alreadyProposed?: {
+      title: string;
+      option_type: string;
+      sql: string | null;
+    }[];
+  } = {},
 ): Promise<Candidate[]> {
+  const minOptions = opts.minOptions ?? 2;
   // Reasoning models (DeepSeek, Qwen3, o-series) spend part of max_tokens thinking; a long think can leave
   // the answer cut off or empty. Measured on DeepSeek V4-Pro: 13,000 of 14,700 output tokens were reasoning.
   // A cut-off answer is retried once with at least 32,000 (or twice the ceiling) before it is reported:
@@ -181,6 +309,9 @@ export async function proposeCandidates(
             content: JSON.stringify({
               digest: digestForModel(digest),
               user_note: note || null,
+              ...(opts.alreadyProposed?.length
+                ? { already_proposed: opts.alreadyProposed }
+                : {}),
             }),
           },
         ],
@@ -216,7 +347,9 @@ export async function proposeCandidates(
       if (!/HTTP 4(00|22)\b/.test((e as Error).message)) throw e;
     }
   }
-  if (cutOff)
+  // A cut-off answer often already holds complete options before the cut: keep those.
+  const salvaged = cutOff ? salvageCandidates(content) : [];
+  if (cutOff && salvaged.length < minOptions)
     throw new AnalystError(
       content.trim()
         ? `The analyst model's answer was cut off at the response-length limit (${tried.toLocaleString("en-US")} tokens). Raise the maximum response length in Settings; reasoning models such as DeepSeek need 32,000 or more.`
@@ -224,18 +357,46 @@ export async function proposeCandidates(
     );
   if (!content.trim())
     throw new AnalystError("The analyst model returned an empty answer.");
-  const parsed = Proposal.safeParse(extractJson(content));
-  if (!parsed.success) {
-    const n =
-      (extractJson(content) as { candidates?: unknown[] })?.candidates
-        ?.length ?? 0;
-    throw new AnalystError(
-      n < 2
-        ? `The analyst model proposed ${n} option(s); at least 2 are needed before Jev can rank anything.`
-        : `Analyst output did not match the schema at ${parsed.error.issues[0].path.join(".")}: ${parsed.error.issues[0].message}`,
-    );
+  const parse = () => {
+    if (cutOff) return { candidates: salvaged };
+    try {
+      return extractJson(content);
+    } catch (e) {
+      // Malformed or unclosed JSON without a cut-off (seen on real runs): keep the complete options.
+      const partial = salvageCandidates(content);
+      if (partial.length >= minOptions) return { candidates: partial };
+      throw e;
+    }
+  };
+  const raw = parse() as {
+    candidates?: unknown[];
+    insufficient_evidence?: string;
+  };
+  // Each option is validated on its own: one malformed option used to discard all of them (measured on real
+  // runs: option_type "query_rewrite", a missing field in the third option).
+  const valid: Candidate[] = [];
+  let firstIssue: string | null = null;
+  for (const c of (raw?.candidates ?? []).slice(0, 4)) {
+    const one = RawCandidate.safeParse(normalizeCandidate(c));
+    if (one.success) valid.push(one.data);
+    else
+      firstIssue ??= `${valid.length}.${one.error.issues[0].path.join(".")}: ${one.error.issues[0].message}`;
   }
-  if (parsed.data.candidates.length < 2)
+  const parsed = {
+    data: {
+      candidates: valid,
+      insufficient_evidence: raw?.insufficient_evidence,
+    },
+  };
+  if (valid.length < minOptions && (raw?.candidates ?? []).length >= minOptions)
+    throw new AnalystError(
+      `Analyst output did not match the schema${firstIssue ? ` at candidates.${firstIssue}` : ""}.`,
+    );
+  if (valid.length < minOptions && (raw?.candidates ?? []).length)
+    throw new AnalystError(
+      `The analyst model proposed ${valid.length} usable option(s); at least ${minOptions} ${minOptions === 1 ? "is" : "are"} needed.`,
+    );
+  if (parsed.data.candidates.length < minOptions)
     throw new AnalystError(
       `Insufficient evidence: ${parsed.data.insufficient_evidence ?? "At least 2 defensible options are required. Add runtime context or an actual plan."}`,
     );

@@ -336,12 +336,30 @@ const FAULTS = [
     "Jev hangs",
   ],
 ];
+// Faults run on a plan with no rule-built fix, so an analyst failure must end in a clear error...
+const noRulePlan = (
+  await upload(
+    readFileSync("fixtures/eval/sort-spill.sqlplan"),
+    "sort-spill.sqlplan",
+  )
+).data;
 for (const [fault, ok, label] of FAULTS) {
-  const r = await analyze(plan, `qa-fault:${fault}`);
+  const r = await analyze(noRulePlan, `qa-fault:${fault}`);
   check(
     `fault: ${label}`,
     ok(r),
     `${r.error ?? `verdict ${r.verdict}`} after ${Math.round(r.ms)} ms`,
+  );
+}
+// ...while on a plan whose fix the rules can build, the analysis still finishes and says the analyst failed.
+{
+  const r = await analyze(plan, "qa-fault:analyst-500");
+  check(
+    "fault: analyst HTTP 500 with a rule-built fix",
+    r.verdict &&
+      r.verdict !== "unavailable" &&
+      r.flags.includes("analyst_failed"),
+    `verdict ${r.verdict}, flags ${r.flags.join(",")}${r.error ? `, error ${r.error}` : ""}`,
   );
 }
 
