@@ -1,6 +1,8 @@
 import { requireUser } from "@/lib/auth";
 import { analystConfig, jevKey } from "@/lib/settings";
 import { sse } from "@/lib/stream";
+import { parseContext } from "@/lib/schema-context.mjs";
+import type { SchemaContext } from "@/lib/digest";
 import { newAnalysis, patchAnalysis, findReusable } from "@/lib/db";
 import {
   ingestPlan,
@@ -33,6 +35,8 @@ export async function POST(req: Request) {
     note?: string;
     /** Ask the models again even when an identical request already has a result. */
     force?: boolean;
+    /** What contextQuery() returned: the tables' existing index definitions. Optional. */
+    context?: string;
   };
   try {
     const reader = req.body?.getReader();
@@ -80,6 +84,10 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     const digestForKey = await statementDigest(planId, statementId);
+    // The DBA's existing index definitions travel with the digest: the rules, the models and the reuse key
+    // all see them, and Run again keeps them (it reruns the stored digest).
+    const context = parseContext(String(body.context ?? "").slice(0, 500_000));
+    if (context) digestForKey.schemaContext = context as SchemaContext;
     const noteForKey = String(body.note ?? "").slice(0, 2000);
     // An identical request (same evidence, note and models) opens its finished report: same plan in, same
     // action plan out, and no model cost. "Run again anyway" on that report asks the models again.

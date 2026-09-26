@@ -8,6 +8,7 @@ import type { Verdict } from "@/lib/jev";
 import { AnalysisResults } from "./analysis-results";
 import { Icon } from "./icons";
 import { PipelineProgress } from "./pipeline-progress";
+import { parseContext } from "@/lib/schema-context.mjs";
 type Summary = {
   id: string;
   sql: string;
@@ -22,6 +23,13 @@ type Plan = {
   recommended: string;
   statements: Summary[];
 };
+const plural = (n: number, word: string) =>
+  `${n} ${word}${n === 1 ? "" : word.endsWith("x") ? "es" : "s"}`;
+const contextSummary = (c: { tables: { indexes: unknown[] }[] }) =>
+  `Read ${plural(c.tables.length, "table")} and ${plural(
+    c.tables.reduce((n, t) => n + t.indexes.length, 0),
+    "index",
+  )}. Suggested indexes are checked against them.`;
 export function Runner() {
   const router = useRouter();
   const [mode, setMode] = useState<"upload" | "paste">("upload"),
@@ -29,7 +37,10 @@ export function Runner() {
     [note, setNote] = useState(""),
     [plan, setPlan] = useState<Plan | null>(null),
     [statement, setStatement] = useState(""),
-    [page, setPage] = useState(0);
+    [page, setPage] = useState(0),
+    [context, setContext] = useState(""),
+    [contextSql, setContextSql] = useState(""),
+    [contextNote, setContextNote] = useState("");
   const [stage, setStage] = useState<string | null>(null),
     [error, setError] = useState(""),
     [drag, setDrag] = useState(false),
@@ -62,6 +73,8 @@ export function Runner() {
       setStatement("");
       setXml("");
       setNote("");
+      setContext("");
+      setContextSql("");
       setDigest(null);
       setCandidates([]);
       setVerdict(null);
@@ -89,6 +102,8 @@ export function Runner() {
     setVerdict(null);
     setId(undefined);
     setPage(0);
+    setContext("");
+    setContextSql("");
     const ac = new AbortController();
     abort.current = ac;
     try {
@@ -144,7 +159,12 @@ export function Runner() {
       const r = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ planId: plan.id, statementId: statement, note }),
+        body: JSON.stringify({
+          planId: plan.id,
+          statementId: statement,
+          note,
+          ...(context.trim() ? { context } : {}),
+        }),
         signal: ac.signal,
       });
       if (!r.ok || !r.body)
@@ -189,6 +209,27 @@ export function Runner() {
       setStage(null);
     }
   }
+  // The read-only query that lists the existing indexes of the statement's tables. Its result, pasted
+  // back, keeps an index suggestion from duplicating an index the table already has.
+  async function copyContextQuery() {
+    if (!plan) return;
+    setContextNote("");
+    try {
+      const r = await fetch(
+        `/api/plans/${plan.id}/context-query?statement=${encodeURIComponent(statement)}`,
+      );
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error);
+      setContextSql(data.sql);
+      await navigator.clipboard?.writeText(data.sql).then(
+        () => setContextNote("Query copied. Run it in the plan's database."),
+        () => setContextNote("Select the query below and copy it."),
+      );
+    } catch (e) {
+      setContextNote((e as Error).message);
+    }
+  }
+  const contextTables = context.trim() ? parseContext(context) : null;
   // Stop asks the server to stop the run; its report then says so and offers Run again. Leaving the page
   // does not stop anything.
   async function cancel() {
@@ -329,6 +370,57 @@ export function Runner() {
                 </option>
               ))}
             </select>
+            <details className="help-details context-details">
+              <summary>
+                Existing indexes <span className="muted">optional</span>
+              </summary>
+              <p>
+                A plan does not list the keys of the indexes a table already
+                has. Run this read-only query (system views only) in the
+                plan&apos;s database and paste its result, so a suggested index
+                extends an existing one instead of duplicating it.
+              </p>
+              <button
+                className="btn"
+                type="button"
+                onClick={copyContextQuery}
+                disabled={!!stage || !statement}
+              >
+                Copy query
+              </button>
+              {contextNote && <p className="muted">{contextNote}</p>}
+              {contextSql && (
+                <textarea
+                  className="field"
+                  rows={4}
+                  readOnly
+                  value={contextSql}
+                  aria-label="Existing indexes query"
+                  spellCheck={false}
+                />
+              )}
+              <label htmlFor="context">Query result</label>
+              <textarea
+                id="context"
+                className="field"
+                rows={3}
+                value={context}
+                onChange={(e) => setContext(e.target.value)}
+                placeholder='[{"schema":"dbo","table":"Orders","rows":…,"indexes":[…]}]'
+                spellCheck={false}
+                disabled={!!stage}
+              />
+              {context.trim() && (
+                <p
+                  className={contextTables ? "muted" : "danger-text"}
+                  role="status"
+                >
+                  {contextTables
+                    ? contextSummary(contextTables)
+                    : "Not recognised: paste the single JSON value the query returns."}
+                </p>
+              )}
+            </details>
             {plan.count > 50 && (
               <div className="pagination">
                 <button

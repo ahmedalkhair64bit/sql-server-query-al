@@ -42,10 +42,6 @@ export const RawCandidate = z.object({
   rejected_reasons: z.array(z.string()).default([]),
   check_warnings: z.array(z.string()).default([]),
 });
-const Proposal = z.object({
-  candidates: z.array(RawCandidate).max(4),
-  insufficient_evidence: z.string().optional(),
-});
 export type Action = z.infer<typeof Action>;
 export type Candidate = z.infer<typeof RawCandidate>;
 

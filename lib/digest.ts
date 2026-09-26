@@ -1,4 +1,23 @@
 import { parsePlanText, planEvidence } from "./plan-parser.mjs";
+import { describeIndexes } from "./schema-context.mjs";
+
+/** Existing indexes of the plan's tables, as returned by contextQuery() and read by parseContext(). */
+export type SchemaContext = {
+  tables: {
+    schema: string;
+    table: string;
+    rows: number | null;
+    indexes: {
+      name: string;
+      type: string;
+      unique: boolean;
+      filtered: boolean;
+      filter: string | null;
+      keys: { column: string; desc: boolean }[];
+      include: string[];
+    }[];
+  }[];
+};
 export { PlanError, MAX_XML_BYTES } from "./plan-parser.mjs";
 // Optional fields are omitted when the plan does not carry them.
 export type Operator = {
@@ -108,6 +127,8 @@ export type Digest = {
     samplingPercent?: number;
     lastUpdate?: string;
   }[];
+  /** Existing index definitions the DBA supplied (lib/schema-context.mjs), when any. */
+  schemaContext?: SchemaContext | null;
   /** Stored by older versions only; evidence is now derived by digestForModel. */
   evidence?: unknown;
 };
@@ -139,6 +160,10 @@ export const digestForModel = (d: Digest) => {
     nonParallelReason: d.nonParallelReason,
     earlyAbort: d.earlyAbort,
     tables: d.tables.slice(0, 20),
+    // The table's real indexes, when the DBA supplied them: never propose an index that already exists.
+    ...(d.schemaContext
+      ? { existing_indexes: describeIndexes(d.schemaContext).slice(0, 60) }
+      : {}),
     waits: d.waits,
     evidence: structuredClone(planEvidence(d).slice(0, 60)) as Evidence[],
     coverage: [
