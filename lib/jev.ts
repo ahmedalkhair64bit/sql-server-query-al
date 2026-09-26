@@ -214,6 +214,9 @@ export function ruleDims(c: Candidate): {
     confidence: null,
     source: "rule" as const,
   };
+  // Rule scores only for pure DDL: SQL that also contains a query (a rewrite shipped with its index) changes
+  // what runs, so Jev judges its safety.
+  if (!ddl.onlyDdl) return {};
   if (
     c.option_type === "statistics" &&
     ddl.statistics.length &&

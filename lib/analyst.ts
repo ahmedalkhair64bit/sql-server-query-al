@@ -86,6 +86,11 @@ addressed before warnings, and two options never attack the same finding the sam
   trade-offs (compile cost, plan stability).
 - A row goal, spool, non-sargable predicate or implicit conversion needs the query or schema changed; an index alone
   rarely fixes it.
+- Every option must improve the plan on its own. When changes only help together, most often a SARGable rewrite and
+  the index its new predicate can seek on, propose them as ONE option: option_type "rewrite", sql_to_run is the
+  CREATE NONCLUSTERED INDEX statement followed by the rewritten query, and actions list both steps. Never offer one
+  half as if it fixed the problem: a rewrite with no index to seek still scans, and an index under a function still
+  cannot be sought.
 - incomplete_execution means the run was cancelled, timed out or failed: counts are partial totals up to the stop.
   Diagnose where it was stuck; never present partial counts as the query's full cost.
 - A healthy plan (no warning or critical findings, fast measured time) needs no change: return
