@@ -4,98 +4,52 @@
     {
       "file": "key-lookup.sqlplan",
       "description": "Key lookup executed 60,000 times from a narrow nonclustered index.",
-      "expect_findings": [
-        "key_lookup"
-      ],
-      "correct_fix_types": [
-        "index"
-      ]
+      "expect_findings": ["key_lookup"],
+      "correct_fix_types": ["index"]
     },
     {
       "file": "parameter-sniffing.sqlplan",
       "description": "Plan compiled for a rare status value, reused for a common one.",
-      "expect_findings": [
-        "parameter_sniffing",
-        "row_estimate_error"
-      ],
-      "correct_fix_types": [
-        "rewrite",
-        "ops",
-        "statistics"
-      ]
+      "expect_findings": ["parameter_sniffing", "row_estimate_error"],
+      "correct_fix_types": ["rewrite", "ops", "statistics"]
     },
     {
       "file": "implicit-conversion.sqlplan",
       "description": "nvarchar parameter against a varchar column forces a scan.",
-      "expect_findings": [
-        "implicit_conversion",
-        "residual_predicate"
-      ],
-      "correct_fix_types": [
-        "rewrite",
-        "app",
-        "schema"
-      ]
+      "expect_findings": ["implicit_conversion", "residual_predicate"],
+      "correct_fix_types": ["rewrite", "app", "schema"]
     },
     {
       "file": "sort-spill.sqlplan",
       "description": "Sort spills because 1,200 rows were estimated and 1.5 million arrived.",
-      "expect_findings": [
-        "tempdb_spill",
-        "row_estimate_error"
-      ],
-      "correct_fix_types": [
-        "statistics",
-        "index"
-      ]
+      "expect_findings": ["tempdb_spill", "row_estimate_error"],
+      "correct_fix_types": ["statistics", "index"]
     },
     {
       "file": "stale-statistics.sqlplan",
       "description": "Ascending-key statistics are 4.2 million modifications old; the recent range is estimated at 10 rows.",
-      "expect_findings": [
-        "stale_statistics",
-        "row_estimate_error"
-      ],
-      "correct_fix_types": [
-        "statistics"
-      ]
+      "expect_findings": ["stale_statistics", "row_estimate_error"],
+      "correct_fix_types": ["statistics"]
     },
     {
       "file": "residual-scan-estimated.sqlplan",
       "description": "Estimated plan: clustered scan reads 3 million rows to return 420; the optimizer suggests an index.",
-      "expect_findings": [
-        "residual_predicate",
-        "missing_index"
-      ],
-      "correct_fix_types": [
-        "index",
-        "ops"
-      ],
+      "expect_findings": ["residual_predicate", "missing_index"],
+      "correct_fix_types": ["index", "ops"],
       "why": "Estimated plan: the index is the fix, but capturing the actual plan first (ops) is the safer first action with no runtime evidence."
     },
     {
       "file": "scalar-udf.sqlplan",
       "description": "A scalar UDF runs per row and forces a serial plan.",
-      "expect_findings": [
-        "scalar_udf"
-      ],
-      "correct_fix_types": [
-        "rewrite",
-        "ops"
-      ],
+      "expect_findings": ["scalar_udf"],
+      "correct_fix_types": ["rewrite", "ops"],
       "why": "Inlining the function by hand (rewrite) or enabling scalar UDF inlining (ops, compatibility level 150+) both remove the per-row calls."
     },
     {
       "file": "table-variable.sqlplan",
       "description": "A table variable estimated at 1 row holds 250,000; nested loops run 250,000 seeks.",
-      "expect_findings": [
-        "table_variable",
-        "row_estimate_error"
-      ],
-      "correct_fix_types": [
-        "rewrite",
-        "app"
-      ]
+      "expect_findings": ["table_variable", "row_estimate_error"],
+      "correct_fix_types": ["rewrite", "app"]
     },
     {
       "file": "healthy.sqlplan",
@@ -106,91 +60,50 @@
     {
       "file": "parallel-skew.sqlplan",
       "description": "One parallel thread reads 1.9 million rows while seven read 15,000 each; CXPACKET dominates.",
-      "expect_findings": [
-        "parallel_skew",
-        "wait_parallelism"
-      ],
-      "correct_fix_types": [
-        "rewrite",
-        "statistics",
-        "ops",
-        "index"
-      ]
+      "expect_findings": ["parallel_skew", "wait_parallelism"],
+      "correct_fix_types": ["rewrite", "statistics", "ops", "index"]
     },
     {
       "file": "index-spool.sqlplan",
       "description": "The optimizer builds a temporary index over Orders on every run because no index on CustomerId includes Total.",
-      "expect_findings": [
-        "index_spool"
-      ],
-      "correct_fix_types": [
-        "index"
-      ]
+      "expect_findings": ["index_spool"],
+      "correct_fix_types": ["index"]
     },
     {
       "file": "non-sargable.sqlplan",
       "description": "YEAR(OrderDate) = 2025 scans an index that a date-range predicate could seek.",
-      "expect_findings": [
-        "non_sargable"
-      ],
-      "correct_fix_types": [
-        "rewrite"
-      ]
+      "expect_findings": ["non_sargable"],
+      "correct_fix_types": ["rewrite"]
     },
     {
       "file": "blocking-waits.sqlplan",
       "description": "A one-row update that waited 29.5 seconds on a lock: the plan is fine, another session was blocking.",
-      "expect_findings": [
-        "wait_blocking"
-      ],
-      "correct_fix_types": [
-        "ops"
-      ]
+      "expect_findings": ["wait_blocking"],
+      "correct_fix_types": ["ops"]
     },
     {
       "file": "row-goal.sqlplan",
       "description": "TOP 10 made the optimizer expect to stop after 50 orders; it read 1.8 million because EMEA customers are rare.",
-      "expect_findings": [
-        "row_goal",
-        "many_executions"
-      ],
-      "correct_fix_types": [
-        "rewrite",
-        "index"
-      ]
+      "expect_findings": ["row_goal", "many_executions"],
+      "correct_fix_types": ["rewrite", "index"]
     },
     {
       "file": "expensive-sort.sqlplan",
       "description": "Sorting 900,000 rows is 87% of the time; an index on (Status, OrderDate) delivers them in order.",
-      "expect_findings": [
-        "expensive_sort"
-      ],
-      "correct_fix_types": [
-        "index"
-      ]
+      "expect_findings": ["expensive_sort"],
+      "correct_fix_types": ["index"]
     },
     {
       "file": "unmatched-filtered-index.sqlplan",
       "description": "A filtered index on Status = 'Open' exists but a parameterized query cannot use it.",
-      "expect_findings": [
-        "unmatched_indexes",
-        "residual_predicate"
-      ],
-      "correct_fix_types": [
-        "rewrite"
-      ]
+      "expect_findings": ["unmatched_indexes", "residual_predicate"],
+      "correct_fix_types": ["rewrite"]
     },
     {
       "file": "linked-server.sqlplan",
       "description": "The filter runs locally after pulling 3 million rows across a linked server.",
-      "expect_findings": [
-        "remote_query",
-        "row_estimate_error"
-      ],
-      "correct_fix_types": [
-        "rewrite",
-        "app"
-      ]
+      "expect_findings": ["remote_query", "row_estimate_error"],
+      "correct_fix_types": ["rewrite", "app"]
     },
     {
       "file": "complex-report.sqlplan",
@@ -205,59 +118,40 @@
         "missing_index",
         "implicit_conversion"
       ],
-      "correct_fix_types": [
-        "index",
-        "rewrite"
-      ]
+      "correct_fix_types": ["index", "rewrite"]
     },
     {
       "file": "blocked-select.sqlplan",
       "description": "A covering-index seek returning 12 rows waited 20.9 s on LCK_M_S: a writer in another session held the lock. The plan is already optimal.",
-      "expect_findings": [
-        "wait_blocking"
-      ],
-      "correct_fix_types": [
-        "ops",
-        "app"
-      ],
+      "expect_findings": ["wait_blocking"],
+      "correct_fix_types": ["ops", "app"],
       "why": "Finding the blocker (ops) or shortening the blocking writer's transactions (app) both remove the lock wait; the plan itself needs nothing."
     },
     {
       "file": "orm-parameterization.sqlplan",
       "description": "An ORM sends the email as nvarchar(4000) against a varchar(256) indexed column: the column is converted, so IX_Customers_Email is scanned (3.2 million rows) instead of sought.",
-      "expect_findings": [
-        "implicit_conversion",
-        "residual_predicate"
-      ],
-      "correct_fix_types": [
-        "app",
-        "rewrite",
-        "schema"
-      ],
+      "expect_findings": ["implicit_conversion", "residual_predicate"],
+      "correct_fix_types": ["app", "rewrite", "schema"],
       "why": "Send varchar from the ORM (app), cast the parameter (rewrite), or align the column type (schema, heavier): all remove the conversion."
     },
     {
       "file": "failed-timeout.sqlplan",
       "description": "Cancelled by a 30 s client timeout: the scan of 240 million Events had read 96 million rows looking for one customer when it stopped. The plan is partial.",
-      "expect_findings": [
-        "incomplete_execution",
-        "residual_predicate"
-      ],
-      "correct_fix_types": [
-        "index"
-      ]
+      "expect_findings": ["incomplete_execution", "residual_predicate"],
+      "correct_fix_types": ["index"]
     },
     {
       "file": "insert-archive.sqlplan",
       "description": "Archiving 4.8 million orders in one INSERT ... SELECT: 96 s, 41 s waiting on WRITELOG, a sort that spills to maintain three nonclustered indexes on the target.",
-      "expect_findings": [
-        "wait_log",
-        "tempdb_spill"
-      ],
-      "correct_fix_types": [
-        "rewrite",
-        "ops"
-      ]
+      "expect_findings": ["wait_log", "tempdb_spill"],
+      "correct_fix_types": ["rewrite", "ops"]
+    },
+    {
+      "file": "non-sargable-accurate-estimates.sqlplan",
+      "description": "YEAR(CreatedOn) = 2024 scans 4.2M pages; estimates are within 1% and the statistic is sampled at 0.86%.",
+      "expect_findings": ["non_sargable", "stale_statistics"],
+      "correct_fix_types": ["rewrite", "index"],
+      "why": "From a real report: Jev picked UPDATE STATISTICS WITH FULLSCAN (fit 28%) because statistics score safe and easy by rule. Accurate estimates mean statistics cannot be the fix; the rewrite or an index on the date column is."
     }
   ]
 }

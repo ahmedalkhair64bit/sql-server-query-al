@@ -2,6 +2,7 @@ import { TypeSafeClient, score, noul, choice } from "@typesafe-ai/sdk";
 import { digestForModel, type Digest } from "./digest.ts";
 import type { Candidate } from "./analyst.ts";
 import { parseDdl, isSystemReadOnly } from "./sql-check.mjs";
+import { detectFindings } from "./findings.mjs";
 
 export type Dim = "bottleneck_fit" | "semantic_safety" | "ease" | "root_cause";
 export const WEIGHTS: Record<Dim, number> = {
@@ -16,6 +17,31 @@ const CONFIDENCE_FLOOR = 0.35;
 /** A split pick still needs to be Jev's clear favourite over "collect more evidence". */
 const SPLIT_FLOOR = 0.3;
 const SPLIT_MAX_DECLINE = 0.25;
+/** A first action may trail the option that best attacks the bottleneck by at most this much fit. */
+const FIT_GAP = 0.3;
+// Findings that mean the optimizer's row estimates are part of the problem.
+const ESTIMATE_RULES = new Set([
+  "row_estimate_error",
+  "parameter_sniffing",
+  "missing_statistics",
+  "excessive_memory_grant",
+  "memory_grant_wait",
+  "tempdb_spill",
+]);
+
+/**
+ * True for an actual plan whose estimates are already right: every operator within 10x, and no finding
+ * that points at estimates. Refreshing statistics cannot change such a plan. Measured on a real report:
+ * YEAR(CreationDate) = 2013 scanned 4.2M reads with estimates within 1%, and Jev still picked
+ * UPDATE STATISTICS ... WITH FULLSCAN, because a statistics option scores "safe" and "easy" by rule.
+ */
+export function estimatesAccurate(digest: Digest): boolean {
+  const d = digest as Digest & { actual?: boolean; rowGuessErrors?: unknown[] };
+  if (!d.actual || (d.rowGuessErrors ?? []).length) return false;
+  return !detectFindings(d).some((f: { rule: string }) =>
+    ESTIMATE_RULES.has(f.rule),
+  );
+}
 
 const BOTTLENECK = [
   "Unrelated to the costly operator or the worst estimate error in the plan.",
@@ -330,10 +356,27 @@ export async function judgeCandidates(
     "unsupported_claim",
     "operational_risk",
     "jev_failed",
+    "estimates_accurate",
+    "misses_bottleneck",
   ];
-  const isEligible = (r: Ranked) =>
+  // Statistics cannot fix a plan whose estimates are already right.
+  if (estimatesAccurate(digest))
+    for (const r of order)
+      if (candidates.find((c) => c.key === r.key)?.option_type === "statistics")
+        r.flags.push("estimates_accurate");
+  const passes = (r: Ranked) =>
     !r.flags.some((f) => BLOCKING.includes(f)) &&
     r.dims.bottleneck_fit.value >= 0.25;
+  // The first action should attack the bottleneck: an option far behind the best-fitting eligible one on
+  // fit is an alternative, not a first action, however safe or easy it is.
+  const bestFit = Math.max(
+    0,
+    ...order.filter(passes).map((r) => r.dims.bottleneck_fit.value),
+  );
+  for (const r of order)
+    if (passes(r) && r.dims.bottleneck_fit.value < bestFit - FIT_GAP)
+      r.flags.push("misses_bottleneck");
+  const isEligible = passes;
   const eligibleRanked = order.filter(isEligible);
   const eligible = eligibleRanked.map((r) =>
     candidates.find((c) => c.key === r.key)!,

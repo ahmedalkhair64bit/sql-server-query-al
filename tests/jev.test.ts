@@ -598,3 +598,119 @@ test("a split between two good options still selects Jev's favourite; a lean to 
   );
   assert.equal(weak.headline, null, "not Jev's favourite");
 });
+
+test("statistics are never the first action on an actual plan whose estimates are already right", async () => {
+  // From a real report: YEAR(CreationDate) = 2013 scanned 4.2M reads with estimates within 1%, yet Jev
+  // picked UPDATE STATISTICS ... WITH FULLSCAN (fit 28%) because it scores safe and easy by rule.
+  const accurate = {
+    ...digest,
+    actual: true,
+    rowGuessErrors: [],
+    topOperators: [
+      {
+        ...digest.topOperators[0],
+        estRows: 5384900,
+        actualRows: 5413518,
+        spillLevels: null,
+      },
+    ],
+  };
+  const stats = {
+    ...candidates[1],
+    key: "stats",
+    option_type: "statistics",
+    sql_to_run: "UPDATE STATISTICS dbo.Posts WITH FULLSCAN;",
+  };
+  const offered: string[][] = [];
+  const client = new TypeSafeClient({
+    apiKey: "test",
+    fetch: (async (_u: any, init: any) => {
+      const body = JSON.parse(init.body);
+      if (body.questions.first_to_run)
+        offered.push(body.state.options.map((o: any) => o.key));
+      const answers = body.questions.first_to_run
+        ? {
+            first_to_run: {
+              type: "choice",
+              choice: "a",
+              confidence: 0.8,
+              probabilities: { a: 0.8, no_suitable_action: 0.2 },
+            },
+            anything_worth_running: { type: "noul", noul: 0.9 },
+          }
+        : body.state.candidate.key === "stats"
+          ? scored(2, 4, 3, 0.4)
+          : scored(4, 3, 2, 0.9);
+      return new Response(
+        JSON.stringify({ model: "jev", usage: {}, answers }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as any,
+  });
+  const v = await judgeCandidates(
+    accurate as any,
+    [candidates[0], stats],
+    client,
+  );
+  assert.ok(
+    v.order
+      .find((r) => r.key === "stats")!
+      .flags.includes("estimates_accurate"),
+  );
+  assert.deepEqual(
+    offered,
+    [["a"]],
+    "the statistics option is not offered as a first action",
+  );
+  assert.equal(v.headline, "a");
+
+  // With a real estimate error, the same statistics option is a legitimate candidate.
+  const wrong = {
+    ...accurate,
+    rowGuessErrors: [
+      { id: "0", op: "Scan", est: 1, actual: 5000, ratio: 5000 },
+    ],
+  };
+  const v2 = await judgeCandidates(
+    wrong as any,
+    [candidates[0], stats],
+    client,
+  );
+  assert.ok(
+    !v2.order
+      .find((r) => r.key === "stats")!
+      .flags.includes("estimates_accurate"),
+  );
+});
+
+test("an option far behind on bottleneck fit is an alternative, not a first action", async () => {
+  const weak = {
+    ...candidates[1],
+    key: "weak",
+    option_type: "ops",
+    sql_to_run: null,
+  };
+  const v = await judgeCandidates(
+    digest,
+    [candidates[0], weak],
+    fakeJev({
+      byKey: { a: scored(4, 3, 2, 0.9), weak: scored(1, 4, 4, 0.3) },
+      cross: {
+        first_to_run: {
+          type: "choice",
+          choice: "a",
+          confidence: 0.7,
+          probabilities: { a: 0.7, no_suitable_action: 0.3 },
+        },
+        anything_worth_running: { type: "noul", noul: 0.9 },
+      },
+    }),
+  );
+  assert.ok(
+    v.order.find((r) => r.key === "weak")!.flags.includes("misses_bottleneck"),
+  );
+  assert.ok(
+    !v.order.find((r) => r.key === "a")!.flags.includes("misses_bottleneck"),
+  );
+  assert.equal(v.headline, "a");
+});

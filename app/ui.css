@@ -2270,3 +2270,14 @@ a.model-badge:hover {
 .run-again .report-alert {
   flex-basis: 100%;
 }
+
+/* ---- say what each number means ---- */
+.certainty-note,
+.score-caption {
+  margin: 0;
+  font-size: var(--qai-text-xs);
+  color: var(--qai-ink-muted);
+}
+.score-caption {
+  margin-top: var(--qai-space-l);
+}

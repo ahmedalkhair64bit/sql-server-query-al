@@ -103,7 +103,9 @@ export function ProbabilityBars({
   return (
     <div className="prob">
       <p className="prob-caption">
-        {probs ? "How Jev weighed each choice" : "Composite score per option"}
+        {probs
+          ? "Jev's split between the options"
+          : "Composite score per option"}
       </p>
       <ul>
         {rows.slice(0, 6).map(([key, p]) => {
@@ -241,8 +243,14 @@ export function JevDecision({
             value={
               selected ? verdict.jev_confidence : verdict.anything_worth_running
             }
-            label={selected ? "Decision confidence" : "Anything worth running"}
+            label={selected ? "Jev's certainty" : "Anything worth running"}
           />
+        )}
+        {selected && verdict.jev_confidence < 0.5 && (
+          <p className="certainty-note">
+            Low certainty: Jev prefers this option over the others, but is not
+            sure it will fix the problem. Treat it as the first thing to test.
+          </p>
         )}
         {verdict.status !== "unavailable" && (
           <ProbabilityBars verdict={verdict} candidates={candidates} />
