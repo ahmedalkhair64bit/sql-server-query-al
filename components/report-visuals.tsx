@@ -2,8 +2,9 @@
 import type { Candidate } from "@/lib/analyst";
 import type { Digest } from "@/lib/digest";
 import type { Verdict } from "@/lib/jev";
+import { PopNumber } from "./motion";
 
-/** A formatted number. Reports are read, not watched: values render final, with no count-up. */
+/** A formatted number. Its characters pop in once when it appears (and again if the value changes). */
 export function CountUp({
   value,
   decimals = 0,
@@ -13,15 +14,12 @@ export function CountUp({
   decimals?: number;
   suffix?: string;
 }) {
-  return (
-    <>
-      {value.toLocaleString(undefined, {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-      })}
-      {suffix}
-    </>
-  );
+  const text =
+    value.toLocaleString(undefined, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }) + suffix;
+  return <PopNumber text={text} />;
 }
 
 /** Jev's confidence in its pick, as a ring. The number in the middle is the value; the ring only echoes it. */

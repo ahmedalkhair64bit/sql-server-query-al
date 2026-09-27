@@ -8,6 +8,7 @@ import { saveModelsAction } from "@/lib/actions";
 import { testAnalyst, testJev } from "@/lib/connection";
 import { ModelsForm } from "@/components/models-form";
 import { Backdrop } from "@/components/backdrop";
+import { SuccessCheck } from "@/components/motion";
 
 export const dynamic = "force-dynamic";
 
@@ -155,6 +156,7 @@ export default async function Setup({
       {n === 3 && (
         <>
           <h1 className="setup-title">
+            {ready && <SuccessCheck size={34} delay={350} />}
             {ready
               ? "You are ready"
               : missing.length
@@ -163,6 +165,7 @@ export default async function Setup({
           </h1>
           <ul className="checklist">
             <li data-state={analyst?.ok ? "ok" : "failed"}>
+              {analyst?.ok && <SuccessCheck size={16} delay={100} />}
               <strong>Analyst model</strong>
               <span>
                 {!view.has_analyst
@@ -173,6 +176,7 @@ export default async function Setup({
               </span>
             </li>
             <li data-state={jev?.ok ? "ok" : "failed"}>
+              {jev?.ok && <SuccessCheck size={16} delay={220} />}
               <strong>Jev</strong>
               <span>
                 {!view.has_jev
