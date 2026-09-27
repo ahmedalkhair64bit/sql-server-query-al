@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Candidate } from "@/lib/analyst";
 import type { Digest } from "@/lib/digest";
 import type { Verdict } from "@/lib/jev";
+import { PopNumber } from "./motion";
 import { Icon } from "./icons";
 import { copyText } from "@/lib/clipboard";
 import { detectFindings } from "@/lib/findings.mjs";
@@ -242,7 +243,9 @@ export function AnalysisResults({
                       className="opt-score"
                       title="Option score: this option's weighted fit, safety, ease and root cause. Not Jev's certainty in the decision."
                     >
-                      {Math.round(scores.composite * 100)}
+                      <PopNumber
+                        text={String(Math.round(scores.composite * 100))}
+                      />
                       <small>score</small>
                     </span>
                   )}

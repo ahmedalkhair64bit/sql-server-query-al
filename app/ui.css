@@ -2135,7 +2135,7 @@ a.model-badge:hover {
     -1px 0 0 var(--qai-rule),
     0 -1px 0 var(--qai-rule);
 }
-.kpi span {
+.kpi > span {
   font-size: 12.5px;
   font-weight: 500;
   color: var(--qai-ink-muted);
@@ -2662,5 +2662,243 @@ a.model-badge:hover {
 @media print {
   * {
     animation: none !important;
+  }
+}
+
+/* ---- motion primitives (components/motion.tsx) ----
+   Number pop-in, success check and error shake are adapted from transitions.dev snippets; the thinking
+   shimmer and text swap are our own. Everything here stops under prefers-reduced-motion. */
+:root {
+  --digit-dur: 500ms;
+  --digit-distance: 8px;
+  --digit-stagger: 45ms;
+  --digit-blur: 2px;
+  --digit-ease: cubic-bezier(0.34, 1.45, 0.64, 1);
+  --check-dur: 500ms;
+  --check-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --check-ease-bob: cubic-bezier(0.34, 1.35, 0.64, 1);
+  --shake-distance: 6px;
+  --shake-overshoot: 4px;
+  --shake-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Number pop-in: each character rises into place, slightly blurred, one after another. */
+.t-digit-group,
+.t-digit-group > span[aria-hidden] {
+  display: inline-flex;
+  align-items: baseline;
+}
+.t-digit {
+  display: inline-block;
+}
+.t-digit-group.is-animating .t-digit {
+  animation: t-digit-pop-in var(--digit-dur) var(--digit-ease) both;
+  animation-delay: calc(var(--i, 0) * var(--digit-stagger));
+}
+@keyframes t-digit-pop-in {
+  from {
+    transform: translateY(var(--digit-distance));
+    opacity: 0;
+    filter: blur(var(--digit-blur));
+  }
+  to {
+    transform: none;
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* Success check: fades, turns and settles while the stroke draws. */
+.t-success-check {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--qai-teal);
+  transform-origin: center;
+}
+.t-success-check svg {
+  display: block;
+  overflow: visible;
+}
+.t-success-check path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+.t-success-check[data-state="in"] {
+  animation:
+    t-check-fade var(--check-dur) var(--check-ease) both,
+    t-check-rotate var(--check-dur) var(--check-ease) both,
+    t-check-blur var(--check-dur) var(--check-ease) both,
+    t-check-bob var(--check-dur) var(--check-ease-bob) both;
+  animation-delay: var(--check-delay, 0ms);
+}
+.t-success-check[data-state="done"] path {
+  stroke-dashoffset: 0;
+}
+.t-success-check[data-state="in"] path {
+  animation: t-check-draw var(--check-dur) var(--check-ease) both;
+  animation-delay: calc(var(--check-delay, 0ms) + 80ms);
+}
+@keyframes t-check-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes t-check-rotate {
+  from {
+    transform: rotate(80deg);
+  }
+}
+@keyframes t-check-blur {
+  from {
+    filter: blur(6px);
+  }
+}
+@keyframes t-check-bob {
+  from {
+    translate: 0 40%;
+  }
+}
+@keyframes t-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Error shake: four legs of 80, 60, 80 and 60 ms, each with its own easing. The second selector
+   outranks the page's rise-in on the sign-in form (".auth > :not(.backdrop)"), which would otherwise
+   cancel the shake. */
+.t-shake,
+.auth > .t-shake {
+  animation: t-shake 280ms linear;
+}
+@keyframes t-shake {
+  0% {
+    transform: translateX(0);
+    animation-timing-function: var(--shake-ease);
+  }
+  28.57% {
+    transform: translateX(var(--shake-distance));
+    animation-timing-function: var(--shake-ease);
+  }
+  57.14% {
+    transform: translateX(calc(var(--shake-distance) * -1));
+    animation-timing-function: var(--shake-ease);
+  }
+  78.57% {
+    transform: translateX(var(--shake-overshoot));
+    animation-timing-function: var(--shake-ease);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+/* An error message fades in under the field it is about. */
+.t-error-in {
+  animation: t-error-in 280ms var(--qai-ease-out) both;
+}
+@keyframes t-error-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Thinking shimmer: a highlight sweeps across the text of the step that is running. */
+.t-shimmer {
+  background: linear-gradient(
+      100deg,
+      var(--qai-ink-muted) 0%,
+      var(--qai-ink-muted) 40%,
+      var(--qai-ink) 50%,
+      var(--qai-ink-muted) 60%,
+      var(--qai-ink-muted) 100%
+    )
+    0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: t-shimmer 2s linear infinite;
+}
+@keyframes t-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+/* Text swap: new text arrives out of a soft blur. */
+.t-swap {
+  display: inline-block;
+  animation: t-swap 420ms var(--qai-ease-out) both;
+}
+@keyframes t-swap {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translateY(3px);
+  }
+}
+
+/* Where they are used */
+.field.is-error,
+.field[aria-invalid="true"] {
+  border-color: var(--qai-danger);
+}
+.field.is-error:focus-visible,
+.field[aria-invalid="true"]:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--qai-danger) 20%, transparent);
+}
+.status-line[data-state="ok"]::before {
+  display: none;
+}
+.status-line[data-state="ok"] .t-success-check {
+  align-self: center;
+}
+.status-line[data-state="testing"] {
+  color: var(--qai-ink-muted);
+}
+.pipeline-steps li[data-state="done"] .pipeline-dot .t-success-check {
+  color: var(--qai-paper);
+}
+.pipeline-head strong {
+  font-weight: 600;
+}
+.checklist li[data-state="ok"]::before {
+  content: none;
+}
+.checklist li .t-success-check {
+  color: var(--qai-teal);
+  position: absolute;
+  left: 14px;
+  top: 15px;
+}
+.setup-title .t-success-check {
+  vertical-align: -0.08em;
+  margin-right: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-digit-group .t-digit,
+  .t-success-check,
+  .t-success-check path,
+  .t-shake,
+  .t-error-in,
+  .t-shimmer,
+  .t-swap {
+    animation: none !important;
+  }
+  .t-success-check path {
+    stroke-dashoffset: 0;
+  }
+  .t-shimmer {
+    color: var(--qai-ink-muted);
+    background: none;
+  }
+}
+@media print {
+  .t-success-check path {
+    stroke-dashoffset: 0;
   }
 }

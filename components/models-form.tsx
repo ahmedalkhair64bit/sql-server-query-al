@@ -3,6 +3,7 @@ import { useActionState, useRef, useState } from "react";
 import type { SettingsView } from "@/lib/settings";
 import type { ConnectionStatus } from "@/lib/connection";
 import { PROVIDERS } from "@/lib/providers";
+import { SuccessCheck } from "./motion";
 
 type Result = { ok: boolean; error?: string; message?: string } | null;
 type Tested = ConnectionStatus & { saved?: boolean };
@@ -33,7 +34,22 @@ function Field({
   );
 }
 
-function StatusLine({ status }: { status: Tested | ConnectionStatus | null }) {
+function StatusLine({
+  status,
+  testing,
+  fresh,
+}: {
+  status: Tested | ConnectionStatus | null;
+  testing?: boolean;
+  /** A result of a test run on this page: it animates. A saved one just shows. */
+  fresh?: boolean;
+}) {
+  if (testing)
+    return (
+      <p className="status-line" data-state="testing">
+        <span className="t-shimmer">Waiting for the model to answer…</span>
+      </p>
+    );
   if (!status)
     return (
       <p className="status-line" data-state="untested">
@@ -41,11 +57,14 @@ function StatusLine({ status }: { status: Tested | ConnectionStatus | null }) {
       </p>
     );
   return (
+    // Keyed by the test's time at the call site, so each new result plays: a check draws itself on
+    // success, a failure shakes.
     <p
-      className="status-line"
+      className={`status-line ${!status.ok && fresh ? "t-shake" : ""}`}
       data-state={status.ok ? "ok" : "failed"}
       role={status.ok ? "status" : "alert"}
     >
+      {status.ok && <SuccessCheck size={16} animate={fresh} />}
       {status.ok
         ? `Connected · answered in ${status.ms.toLocaleString()} ms`
         : status.message}
@@ -86,6 +105,7 @@ export function ModelsForm({
     jev: Tested | ConnectionStatus | null;
   }>({ analyst: view.analyst_status, jev: view.jev_status });
   const [testing, setTesting] = useState<"analyst" | "jev" | null>(null);
+  const [fresh, setFresh] = useState({ analyst: false, jev: false });
   const [listed, setListed] = useState<string[]>(
     view.analyst_status?.models ?? [],
   );
@@ -116,6 +136,7 @@ export function ModelsForm({
       }));
     } finally {
       setTesting(null);
+      setFresh((f) => ({ ...f, [target]: true }));
     }
   }
 
@@ -274,7 +295,12 @@ export function ModelsForm({
           >
             {testing === "analyst" ? "Testing…" : "Test analyst connection"}
           </button>
-          <StatusLine status={status.analyst} />
+          <StatusLine
+            key={status.analyst?.at ?? 0}
+            status={status.analyst}
+            testing={testing === "analyst"}
+            fresh={fresh.analyst}
+          />
         </div>
       </fieldset>
 
@@ -331,7 +357,12 @@ export function ModelsForm({
           >
             {testing === "jev" ? "Testing…" : "Test Jev connection"}
           </button>
-          <StatusLine status={status.jev} />
+          <StatusLine
+            key={status.jev?.at ?? 0}
+            status={status.jev}
+            testing={testing === "jev"}
+            fresh={fresh.jev}
+          />
         </div>
       </fieldset>
 
@@ -368,7 +399,7 @@ export function ModelsForm({
           {pending ? "Saving…" : submitLabel}
         </button>
         {message && !message.ok && (
-          <p role="alert" className="danger-text">
+          <p role="alert" className="danger-text t-error-in">
             {message.error}
           </p>
         )}

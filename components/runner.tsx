@@ -412,7 +412,10 @@ export function Runner() {
               />
               {context.trim() && (
                 <p
-                  className={contextTables ? "muted" : "danger-text"}
+                  key={contextTables ? "read" : "unread"}
+                  className={
+                    contextTables ? "muted t-swap" : "danger-text t-shake"
+                  }
                   role="status"
                 >
                   {contextTables
@@ -487,7 +490,7 @@ export function Runner() {
         />
       )}
       {error && (
-        <div className="notice danger-text" role="alert">
+        <div className="notice danger-text t-shake" role="alert" key={error}>
           {error}
         </div>
       )}
