@@ -102,6 +102,7 @@ export function PlanCompare({
           <label>
             Option applied
             <select
+              className="field"
               value={applied}
               onChange={(e) => setApplied(e.target.value)}
             >

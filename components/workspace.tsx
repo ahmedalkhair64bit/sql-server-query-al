@@ -133,7 +133,7 @@ export function Workspace({
             </span>
             <span>
               Query<span className="brand-ai">AI</span>
-              <small>SQL SERVER WORKSPACE</small>
+              <small>SQL Server workspace</small>
             </span>
           </Link>
           <button
