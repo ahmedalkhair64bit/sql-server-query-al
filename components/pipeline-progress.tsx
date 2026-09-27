@@ -66,8 +66,9 @@ export function PipelineProgress({
   return (
     <section className="pipeline" role="status" aria-live="polite">
       <div className="pipeline-head">
-        <strong className="t-swap t-shimmer" key={stage}>
-          {STEPS[index].title}…
+        {/* Separate elements: one animation property each, so the swap does not cancel the shimmer. */}
+        <strong className="t-swap" key={stage}>
+          <span className="t-shimmer">{STEPS[index].title}…</span>
         </strong>
         <span className="pipeline-timer">{seconds.toFixed(1)} s</span>
       </div>

@@ -11,6 +11,11 @@ test("a wrong password marks the fields, keeps the email and clears on edit", as
   await page.getByRole("button", { name: /sign in/i }).click();
   await expect(page.locator("#auth-error")).toBeVisible();
   await expect(page.locator("form.auth-form")).toHaveClass(/t-shake/);
+  // The class alone is not enough: another animation rule could cancel it.
+  await expect(page.locator("form.auth-form")).toHaveCSS(
+    "animation-name",
+    "t-shake",
+  );
   await expect(page.locator("#password")).toHaveAttribute(
     "aria-invalid",
     "true",

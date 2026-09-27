@@ -2765,8 +2765,11 @@ a.model-badge:hover {
   }
 }
 
-/* Error shake: four legs of 80, 60, 80 and 60 ms, each with its own easing. */
-.t-shake {
+/* Error shake: four legs of 80, 60, 80 and 60 ms, each with its own easing. The second selector
+   outranks the page's rise-in on the sign-in form (".auth > :not(.backdrop)"), which would otherwise
+   cancel the shake. */
+.t-shake,
+.auth > .t-shake {
   animation: t-shake 280ms linear;
 }
 @keyframes t-shake {
