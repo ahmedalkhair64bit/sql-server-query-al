@@ -3,7 +3,10 @@
 
 html, body { overflow-x: clip; }
 body { background: var(--qai-paper); color: var(--qai-ink); font-family: var(--qai-font-body);
-       font-size: var(--qai-text-base); line-height: 1.5; margin: 0; }
+       font-size: var(--qai-text-base); line-height: 1.55; margin: 0;
+       -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+       font-feature-settings: "ss01", "cv11"; text-rendering: optimizeLegibility; }
 * { box-sizing: border-box; }
+::selection { background: color-mix(in oklch, var(--qai-accent) 22%, transparent); }
 :focus-visible { outline: 2px solid var(--qai-focus); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

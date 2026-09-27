@@ -70,13 +70,12 @@ export default async function Setup({
   return (
     <main className="setup">
       <Backdrop />
-      <Image
-        src="/brand/logo.png"
-        alt="SQL Server Query AI"
-        width={120}
-        height={120}
-        className="setup-logo"
-      />
+      <div className="auth-brand setup-brand">
+        <span className="logo-mark">
+          <Image src="/brand/logo.png" alt="" width={74} height={74} />
+        </span>
+        SQL Server Query AI
+      </div>
       <ol className="stepper" aria-label="Setup progress">
         {STEPS.map((label, i) => (
           <li
