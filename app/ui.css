@@ -2185,6 +2185,122 @@ a.model-badge:hover {
   }
 }
 
+/* ---- animated backdrop (sign-in, sign-up, onboarding) ---- */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--qai-paper);
+}
+.auth > :not(.backdrop),
+.setup > :not(.backdrop) {
+  position: relative;
+  z-index: 1;
+}
+.backdrop-glow {
+  position: absolute;
+  width: 60vmax;
+  height: 60vmax;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.22;
+  background: radial-gradient(circle, var(--qai-accent) 0%, transparent 65%);
+  animation: qai-drift 28s ease-in-out infinite alternate;
+}
+.backdrop-glow.g1 {
+  top: -25vmax;
+  left: -15vmax;
+}
+.backdrop-glow.g2 {
+  bottom: -30vmax;
+  right: -20vmax;
+  opacity: 0.16;
+  animation-duration: 34s;
+  animation-delay: -12s;
+}
+.backdrop-glow.g3 {
+  top: 30%;
+  left: 45%;
+  width: 36vmax;
+  height: 36vmax;
+  opacity: 0.1;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--qai-accent), oklch(75% 0.15 190)) 0%,
+    transparent 65%
+  );
+  animation-duration: 40s;
+  animation-delay: -20s;
+}
+.backdrop-plan {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.5;
+  /* Fade toward the centre so the form stays the clearest thing on the page. */
+  mask-image: radial-gradient(
+    ellipse 70% 80% at center,
+    transparent 30%,
+    black 85%
+  );
+}
+.backdrop-plan .edge {
+  fill: none;
+  stroke: var(--qai-rule);
+  stroke-width: 1.5;
+}
+.backdrop-plan .flow {
+  fill: none;
+  stroke: var(--qai-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 6 26;
+  opacity: 0.55;
+  animation: qai-flow 3.2s linear infinite;
+}
+.backdrop-plan .node {
+  fill: var(--qai-paper-2);
+  stroke: var(--qai-rule);
+  stroke-width: 1.5;
+  animation: qai-pulse 6s ease-in-out infinite;
+}
+@keyframes qai-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(8vmax, 6vmax, 0) scale(1.15);
+  }
+}
+/* Dashes move from the child operator toward its parent, as rows do in a plan. */
+@keyframes qai-flow {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+@keyframes qai-pulse {
+  0%,
+  100% {
+    stroke: var(--qai-rule);
+  }
+  50% {
+    stroke: color-mix(in oklch, var(--qai-accent) 55%, var(--qai-rule));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .backdrop * {
+    animation: none !important;
+  }
+}
+@media print {
+  .backdrop {
+    display: none;
+  }
+}
+
 /* ---- auth ---- */
 .auth {
   max-width: 400px;

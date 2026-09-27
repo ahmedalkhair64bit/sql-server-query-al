@@ -7,6 +7,7 @@ import { getSettings, setModelStatus } from "@/lib/db";
 import { saveModelsAction } from "@/lib/actions";
 import { testAnalyst, testJev } from "@/lib/connection";
 import { ModelsForm } from "@/components/models-form";
+import { Backdrop } from "@/components/backdrop";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,7 @@ export default async function Setup({
 
   return (
     <main className="setup">
+      <Backdrop />
       <Image
         src="/brand/logo.png"
         alt="SQL Server Query AI"
