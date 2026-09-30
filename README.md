@@ -54,15 +54,17 @@ If Jev abstains or is unavailable, the report shows **no selected winner**. Scor
 
 ## Quick start with Docker
 
-You need Docker Engine or Docker Desktop. The published image currently targets **Linux AMD64**. Other CPU architectures require compatible emulation or a source build; a native ARM64 image has not been published.
+You need Docker Engine or Docker Desktop. The release target is **Linux AMD64**. Other CPU architectures require compatible emulation or a source build.
+
+**Release preparation:** `20260930` is the next pinned Docker tag. Its publication has not been verified. Until it is pushed and verified, build from source using `docker compose up -d --build`. See the [release notes and publishing commands](docs/releases/20260930.md).
 
 ### 1. Pull the image
 
 ```bash
-docker pull worlber/sql-server-query-al:latest
+docker pull worlber/sql-server-query-al:20260930
 ```
 
-For a fixed release, use `worlber/sql-server-query-al:20260922` instead of `latest`.
+The date tag pins this release; `latest` follows subsequent builds from `main`.
 
 ### 2. Create a runtime secret
 
@@ -89,7 +91,7 @@ docker run -d \
   --env-file .env \
   -e DATA_DIR=/data \
   -v sql-server-query-ai-data:/data \
-  worlber/sql-server-query-al:latest
+  worlber/sql-server-query-al:20260930
 ```
 
 Open **http://localhost:3000**. On a remote machine, replace `localhost` with its hostname or IP address.
@@ -120,7 +122,7 @@ docker compose pull
 docker compose up -d --no-build
 ```
 
-The included Compose file uses the published, pinned image, exposes port 3000, and persists `/data` in a named volume. To select a different published tag, set `QAI_IMAGE` in `.env`:
+The included Compose file pins `worlber/sql-server-query-al:20260930`, exposes port 3000, and persists `/data` in a named volume. Pulling it requires the tag to be published first. To select a different published tag, set `QAI_IMAGE` in `.env`:
 
 ```dotenv
 QAI_IMAGE=worlber/sql-server-query-al:latest
@@ -219,7 +221,7 @@ Do not use `docker compose down -v` unless you intend to delete the application'
 | `MAX_RUNS_PER_USER` | `5`                                 | Analyses one user can have running at once. Runs continue on the server when the page is closed.                |
 | `JEV_CROSS_SAMPLES` | `2`                                 | How many times Jev's final choice is asked and averaged (1 to 5). Higher is steadier and costs more Jev calls.  |
 | `COOKIE_SECURE`     | Unset                               | Set to `1` for direct HTTPS if the proxy does not supply `X-Forwarded-Proto`. Leave unset for plain local HTTP. |
-| `QAI_IMAGE`         | Published `20260922` tag            | Compose image selection; not an application setting.                                                            |
+| `QAI_IMAGE`         | `20260930` tag (publication pending) | Compose image selection; not an application setting.                                                           |
 
 ## Supported plans and limits
 
@@ -273,7 +275,7 @@ npm run stress:api -- --docker qai:test
 
 Default browser tests use isolated `.playwright-data` storage and controlled provider responses. Live integration tests require `JEV_API_KEY`, `QAI_ANALYST_BASE_URL`, and `QAI_ANALYST_MODEL`, plus any provider-specific key or extra parameters, in your local environment. Build first, then run `npm run e2e:live`. Do not commit the credentials.
 
-The deployed release passed 43 browser regression cases across Chromium, Firefox, WebKit, and mobile, plus live analyst/Jev and restart-persistence checks. A server-local 100 MB upload/indexing probe took approximately 3.5 seconds; results depend on hardware and network conditions.
+See the [Docker release notes](docs/releases/20260930.md) for validation results and remaining checks before publishing.
 
 ```text
 app/           Pages and API routes
