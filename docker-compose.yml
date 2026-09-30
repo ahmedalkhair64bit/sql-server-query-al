@@ -1,6 +1,6 @@
 services:
   qai:
-    image: ${QAI_IMAGE:-worlber/sql-server-query-al:20260922}
+    image: ${QAI_IMAGE:-worlber/sql-server-query-al:20260930}
     build: .
     ports: ["3000:3000"]
     environment:
