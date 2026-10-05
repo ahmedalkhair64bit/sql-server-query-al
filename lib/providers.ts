@@ -18,6 +18,15 @@ export const PROVIDERS: Provider[] = [
     models: ["gpt-4.1", "gpt-4.1-mini", "gpt-4o-mini"],
   },
   {
+    id: "custom",
+    label: "Custom OpenAI-compatible endpoint",
+    baseUrl: "",
+    urlHint:
+      "Any server that speaks the OpenAI Chat Completions API: LM Studio, Together, Groq, Mistral, Fireworks, a company gateway or your own proxy. Enter its base URL, usually ending in /v1.",
+    keyHint: "Your provider's API key, or any text if the server needs none",
+    models: [],
+  },
+  {
     id: "azure",
     label: "Azure OpenAI",
     baseUrl: "https://YOUR-RESOURCE.openai.azure.com/openai/v1",
@@ -65,13 +74,6 @@ export const PROVIDERS: Provider[] = [
     urlHint: "Point at your vLLM server's /v1 endpoint.",
     keyHint:
       "The --api-key your vLLM server was started with, or any text if none",
-    models: [],
-  },
-  {
-    id: "custom",
-    label: "Other OpenAI-compatible",
-    baseUrl: "",
-    keyHint: "Your provider's API key",
     models: [],
   },
 ];

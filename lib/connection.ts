@@ -16,8 +16,9 @@ const TIMEOUT_MS = 20_000;
 export const analystFingerprint = (
   c: Pick<AnalystConfig, "baseUrl" | "model" | "apiKey">,
 ) => `${c.baseUrl}|${c.model}|${c.apiKey.slice(-4)}`;
-export const jevFingerprint = (key: string, model: string) =>
-  `${model}|${key.slice(-4)}`;
+// The endpoint is part of what was tested; omitted when it is the default, so earlier tests stay valid.
+export const jevFingerprint = (key: string, model: string, baseUrl = "") =>
+  `${model}|${key.slice(-4)}${baseUrl ? `|${baseUrl}` : ""}`;
 
 // Turn HTTP failures into the next step the user should take.
 function explain(status: number, body: string, baseUrl: string) {
@@ -129,17 +130,18 @@ export async function testJev(
   key: string,
   model: string,
   client?: TypeSafeClient,
+  baseUrl = "",
 ): Promise<ConnectionStatus> {
   const started = Date.now();
   const done = (ok: boolean, message: string): ConnectionStatus => ({
     ok,
     ms: Date.now() - started,
     message,
-    fingerprint: jevFingerprint(key, model),
+    fingerprint: jevFingerprint(key, model, baseUrl),
     at: Date.now(),
   });
   try {
-    const c = client ?? makeJevClient(key, model);
+    const c = client ?? makeJevClient(key, model, baseUrl);
     const r = await c.systemOne(
       {
         state: { ping: "ok" },

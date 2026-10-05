@@ -164,7 +164,8 @@ export function ModelsForm({
             onChange={(e) => {
               const next = PROVIDERS.find((p) => p.id === e.target.value)!;
               setProvider(next.id);
-              if (next.baseUrl) setBaseUrl(next.baseUrl);
+              // Custom starts empty so the field visibly asks for the endpoint.
+              setBaseUrl(next.baseUrl);
             }}
           >
             {PROVIDERS.map((p) => (
@@ -346,6 +347,22 @@ export function ModelsForm({
             autoComplete="off"
             spellCheck={false}
             defaultValue={view.jev_model}
+          />
+        </Field>
+        <Field
+          id="jev_base_url"
+          label="Jev endpoint (optional)"
+          help="Leave empty for TypeSafe's service. Set it for a self-hosted, regional or proxied Jev."
+        >
+          <input
+            className="field"
+            id="jev_base_url"
+            name="jev_base_url"
+            inputMode="url"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="https://api.typesafe.ai"
+            defaultValue={view.jev_base_url}
           />
         </Field>
         <div className="test-row">

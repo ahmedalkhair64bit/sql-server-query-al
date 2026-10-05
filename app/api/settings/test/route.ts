@@ -1,7 +1,8 @@
 import { requireUser } from "@/lib/auth";
 import { getSettings, setModelStatus } from "@/lib/db";
 import { open } from "@/lib/vault";
-import { extraFromForm, jevModel } from "@/lib/settings";
+import { extraFromForm, jevModel, jevBaseUrl } from "@/lib/settings";
+import { staticUrlProblem } from "@/lib/egress";
 import { testAnalyst, testJev } from "@/lib/connection";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,13 +65,27 @@ export async function POST(req: Request) {
   if (target === "jev") {
     const key = v("jev_key") || open(s?.jev_key ?? "");
     const model = v("jev_model") || "jev-latest";
+    // Tests what is in the form: an empty endpoint field means the default service.
+    const base = fd.has("jev_base_url")
+      ? v("jev_base_url").replace(/\/+$/, "")
+      : jevBaseUrl(u.id);
+    const baseProblem = base ? staticUrlProblem(base) : null;
+    if (baseProblem)
+      return Response.json({
+        ok: false,
+        message: `Jev endpoint: ${baseProblem}`,
+      });
     if (!key)
       return Response.json({
         ok: false,
         message: "Enter the TypeSafe API key first.",
       });
-    const status = await testJev(key, model);
-    const saved = s && open(s.jev_key) === key && jevModel(u.id) === model;
+    const status = await testJev(key, model, undefined, base);
+    const saved =
+      s &&
+      open(s.jev_key) === key &&
+      jevModel(u.id) === model &&
+      jevBaseUrl(u.id) === base;
     if (saved) setModelStatus(u.id, "jev", JSON.stringify(status));
     return Response.json({ ...status, saved: !!saved });
   }

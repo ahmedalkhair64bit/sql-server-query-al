@@ -132,21 +132,37 @@ To build from source instead:
 docker compose up -d --build
 ```
 
+## Deploy on Railway
+
+The repository includes a `railway.json`: Railway builds the `Dockerfile` and checks `/api/healthz` before switching traffic to a new deploy.
+
+1. In Railway, create a project from this GitHub repository.
+2. **Attach a volume** to the service with mount path `/data`. Accounts, settings, uploaded plans and reports live there; without a volume they are lost on every deploy, and the service logs a warning saying so. The image finds the volume wherever it is mounted and makes it writable for its unprivileged user, so `RAILWAY_RUN_UID` is not needed.
+3. Under **Variables**, add `APP_SECRET`: at least 16 characters, generated, for example with `openssl rand -hex 32`. Keep it: it encrypts the saved API keys, and changing it makes them unreadable.
+4. Under **Networking**, generate a domain, open it, and create the first account. Sign-up then closes; set `ALLOW_SIGNUP=1` while teammates create theirs.
+
+Railway sets `PORT` and terminates HTTPS; the app listens on that port and marks its cookies secure from the forwarded protocol, so nothing else needs configuring.
+
+- **One instance.** The database is SQLite on the volume, and running analyses live in the server process, so do not add replicas (Railway does not allow replicas with a volume either).
+- **Redeploys** stop analyses that are running at that moment; their reports offer **Run again**.
+- **Model endpoints** must be reachable from Railway: `localhost` and `host.docker.internal` do not reach your own machine. Use a public endpoint, or [Railway private networking](https://docs.railway.com/guides/private-networking) for a model server in the same project.
+
 ## Configure your models
 
 After signing up, the setup guide walks through three steps: what the app does, connecting both models, and a check that both actually answer. You can change everything later under **Settings → Models**. Each user has their own saved configuration.
 
-| Field                       | What to enter                                                                                                                          |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Provider                    | OpenAI, Azure OpenAI, Google Gemini, OpenRouter, Ollama, vLLM, or any other OpenAI-compatible API. Choosing one fills in the base URL. |
-| Base URL                    | The API root, usually ending in `/v1`. It must be reachable from inside the container.                                                 |
-| API key                     | Your provider key. For a local endpoint without authentication, enter any text, such as `EMPTY`.                                       |
-| Model                       | The exact model ID (for Azure, the deployment name). **Test analyst connection** lists the models your key can use.                    |
-| Reasoning model switch      | Turn on for Qwen3, DeepSeek-R1 and similar models served by vLLM or SGLang; otherwise the answer arrives empty.                        |
-| Maximum response length     | Leave empty for 4,096 tokens; raise it if answers are cut off.                                                                         |
-| Advanced request parameters | Optional JSON merged into every analyst request, such as `{"temperature":0.2}`.                                                        |
-| TypeSafe API key            | Your Jev key from [TypeSafe Console](https://console.typesafe.ai/keys).                                                                |
-| Jev model                   | `jev-latest` unless you need a pinned version.                                                                                         |
+| Field                       | What to enter                                                                                                                                                                                                                                                                            |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Provider                    | OpenAI, **Custom OpenAI-compatible endpoint** (any server that speaks the Chat Completions API: LM Studio, Together, Groq, a company gateway), Azure OpenAI, Google Gemini, DeepSeek, OpenRouter, Ollama or vLLM. Choosing one fills in the base URL; Custom leaves it for you to enter. |
+| Base URL                    | The API root, usually ending in `/v1`. It must be reachable from inside the container.                                                                                                                                                                                                   |
+| API key                     | Your provider key. For a local endpoint without authentication, enter any text, such as `EMPTY`.                                                                                                                                                                                         |
+| Model                       | The exact model ID (for Azure, the deployment name). **Test analyst connection** lists the models your key can use.                                                                                                                                                                      |
+| Reasoning model switch      | Turn on for Qwen3, DeepSeek-R1 and similar models served by vLLM or SGLang; otherwise the answer arrives empty.                                                                                                                                                                          |
+| Maximum response length     | Leave empty for 4,096 tokens; raise it if answers are cut off.                                                                                                                                                                                                                           |
+| Advanced request parameters | Optional JSON merged into every analyst request, such as `{"temperature":0.2}`.                                                                                                                                                                                                          |
+| TypeSafe API key            | Your Jev key from [TypeSafe Console](https://console.typesafe.ai/keys).                                                                                                                                                                                                                  |
+| Jev model                   | `jev-latest` unless you need a pinned version.                                                                                                                                                                                                                                           |
+| Jev endpoint (optional)     | Leave empty for TypeSafe's service. Set it for a self-hosted, regional or proxied Jev. Like the analyst URL, it may not point at a cloud metadata address.                                                                                                                               |
 
 Use the **Test** buttons before saving: each sends one tiny request and reports the real error (rejected key, unknown model, unreachable URL, timeout). The header shows **Models connected** only when both passed a test of the current settings. Inside a container, `localhost` refers to that container, not your host machine: use a reachable hostname, or `host.docker.internal` for services on the Docker host.
 

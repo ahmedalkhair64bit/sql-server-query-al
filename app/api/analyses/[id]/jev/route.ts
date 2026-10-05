@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { getAnalysis, patchAnalysis } from "@/lib/db";
-import { jevKey, jevModel, digestForModels } from "@/lib/settings";
+import { jevKey, jevModel, jevBaseUrl, digestForModels } from "@/lib/settings";
 import { judgeCandidates, jevFallback, makeJevClient } from "@/lib/jev";
 const pending = new Set<string>();
 export async function POST(
@@ -37,7 +37,7 @@ export async function POST(
       verdict = await judgeCandidates(
         digestForModels(u.id, JSON.parse(a.digest)),
         candidates,
-        makeJevClient(key, jevModel(u.id)),
+        makeJevClient(key, jevModel(u.id), jevBaseUrl(u.id)),
         undefined,
         a.note ?? "",
       );

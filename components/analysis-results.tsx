@@ -103,6 +103,7 @@ export function AnalysisResults({
           candidates={candidates}
           onRetry={id ? retry : undefined}
           busy={busy}
+          actual={digest?.actual}
         />
       )}
       {error && <p role="alert">{error}</p>}

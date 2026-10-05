@@ -56,6 +56,11 @@ function openDb(): DatabaseSync {
     d.exec("ALTER TABLE settings ADD COLUMN analyst_status TEXT");
   if (!settingCols.has("jev_status"))
     d.exec("ALTER TABLE settings ADD COLUMN jev_status TEXT");
+  // Optional Jev endpoint; empty means TypeSafe's service (or TYPESAFE_BASE_URL).
+  if (!settingCols.has("jev_base_url"))
+    d.exec(
+      "ALTER TABLE settings ADD COLUMN jev_base_url TEXT NOT NULL DEFAULT ''",
+    );
   if (!settingCols.has("send_sql"))
     d.exec(
       "ALTER TABLE settings ADD COLUMN send_sql INTEGER NOT NULL DEFAULT 1",
@@ -88,6 +93,8 @@ export type SettingsInput = {
   analyst_extra: string;
   jev_key: string;
   jev_model: string;
+  /** Omitted keeps the stored endpoint; "" means the default service. */
+  jev_base_url?: string;
   onboarded: number;
 };
 export type Analysis = {
@@ -214,6 +221,11 @@ export function saveSettings(userId: string, s: SettingsInput) {
     s.onboarded,
     now(),
   );
+  if (s.jev_base_url !== undefined)
+    db.prepare("UPDATE settings SET jev_base_url = ? WHERE user_id = ?").run(
+      s.jev_base_url,
+      userId,
+    );
 }
 
 export function newAnalysis(
