@@ -2902,3 +2902,80 @@ a.model-badge:hover {
     stroke-dashoffset: 0;
   }
 }
+
+/* ---- a decline that says why and what to do next ---- */
+.decline-closest {
+  margin: 0;
+  font-size: var(--qai-text-sm);
+  color: var(--qai-ink-muted);
+}
+.decline-closest strong {
+  color: var(--qai-ink);
+  font-weight: 600;
+}
+.decline-next {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: color-mix(
+    in oklch,
+    var(--tone, var(--qai-warn)) 6%,
+    var(--qai-paper)
+  );
+  border: 1px solid
+    color-mix(in oklch, var(--tone, var(--qai-warn)) 18%, var(--qai-rule));
+  font-size: 13.5px;
+}
+.decline-next p {
+  margin: 0;
+  font-weight: 600;
+}
+.decline-next ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--qai-ink-muted);
+}
+.prob-mark.closest {
+  background: color-mix(in oklch, var(--qai-warn) 14%, var(--qai-paper));
+  color: var(--qai-warn);
+}
+
+/* ---- onboarding header: whose account this is, and a way out ---- */
+.setup-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-bottom: var(--qai-space-l);
+}
+.setup-top .setup-brand {
+  margin: 0;
+}
+.setup-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--qai-ink-muted);
+}
+.setup-account span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.setup-account strong {
+  color: var(--qai-ink);
+  font-weight: 500;
+}
+.btn-quiet {
+  min-height: 32px;
+  padding: 5px 11px;
+  font-size: 13px;
+  box-shadow: none;
+}

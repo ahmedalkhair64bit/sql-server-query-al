@@ -2,9 +2,15 @@ import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { settingsView, analystConfig, jevKey, jevModel } from "@/lib/settings";
+import {
+  settingsView,
+  analystConfig,
+  jevKey,
+  jevModel,
+  jevBaseUrl,
+} from "@/lib/settings";
 import { getSettings, setModelStatus } from "@/lib/db";
-import { saveModelsAction } from "@/lib/actions";
+import { saveModelsAction, signOut } from "@/lib/actions";
 import { testAnalyst, testJev } from "@/lib/connection";
 import { ModelsForm } from "@/components/models-form";
 import { Backdrop } from "@/components/backdrop";
@@ -58,7 +64,7 @@ export default async function Setup({
     }
     const key = jevKey(u.id);
     if (key && !jev?.ok) {
-      jev = await testJev(key, jevModel(u.id));
+      jev = await testJev(key, jevModel(u.id), undefined, jevBaseUrl(u.id));
       setModelStatus(u.id, "jev", JSON.stringify(jev));
     }
   }
@@ -71,12 +77,22 @@ export default async function Setup({
   return (
     <main className="setup">
       <Backdrop />
-      <div className="auth-brand setup-brand">
-        <span className="logo-mark">
-          <Image src="/brand/logo.png" alt="" width={74} height={74} />
-        </span>
-        SQL Server Query AI
-      </div>
+      <header className="setup-top">
+        <div className="auth-brand setup-brand">
+          <span className="logo-mark">
+            <Image src="/brand/logo.png" alt="" width={74} height={74} />
+          </span>
+          SQL Server Query AI
+        </div>
+        {/* Reported from use: opening the app with an earlier session went straight to this guide, with
+            no sign of whose account it was or a way to switch. */}
+        <form action={signOut} className="setup-account">
+          <span>
+            Signed in as <strong>{u.email}</strong>
+          </span>
+          <button className="btn btn-quiet">Sign out</button>
+        </form>
+      </header>
       <ol className="stepper" aria-label="Setup progress">
         {STEPS.map((label, i) => (
           <li

@@ -1,4 +1,6 @@
 import { TypeSafeClient, score, noul, choice } from "@typesafe-ai/sdk";
+import { passesChecks } from "./decline.ts";
+import { guardedFetch } from "./egress.ts";
 import { digestForModel, type Digest } from "./digest.ts";
 import type { Candidate } from "./analyst.ts";
 import { parseDdl, isSystemReadOnly } from "./sql-check.mjs";
@@ -106,12 +108,19 @@ export type Verdict = {
 
 // A hung Jev used to cost 60 s (20 s timeout, retried twice). Timeouts are not retried: a Jev that did not
 // answer in 20 s rarely answers on the next try, and the report says so instead. HTTP 429/5xx still retry.
-export const makeJevClient = (apiKey: string, model = "jev-latest") =>
+// A custom endpoint (a self-hosted or regional Jev) is typed by a user, so it goes through the same egress
+// guard as the analyst URL. Empty uses TypeSafe's service, or TYPESAFE_BASE_URL when the server sets it.
+export const makeJevClient = (
+  apiKey: string,
+  model = "jev-latest",
+  baseURL = "",
+) =>
   new TypeSafeClient({
     apiKey,
     defaultModel: model,
     timeout: 20_000,
     retry: { apiTimeoutError: false },
+    ...(baseURL ? { baseURL, fetch: guardedFetch } : {}),
   });
 
 const norm = (s: number, levels: number) =>
@@ -417,24 +426,13 @@ export async function judgeCandidates(
       });
     })
     .sort((a, b) => b.composite - a.composite);
-  const BLOCKING = [
-    "verify_semantics",
-    "invalid_evidence",
-    "low_confidence",
-    "unsupported_claim",
-    "operational_risk",
-    "jev_failed",
-    "estimates_accurate",
-    "misses_bottleneck",
-  ];
   // Statistics cannot fix a plan whose estimates are already right.
   if (estimatesAccurate(digest))
     for (const r of order)
       if (candidates.find((c) => c.key === r.key)?.option_type === "statistics")
         r.flags.push("estimates_accurate");
-  const passes = (r: Ranked) =>
-    !r.flags.some((f) => BLOCKING.includes(f)) &&
-    r.dims.bottleneck_fit.value >= 0.25;
+  // The same test the report uses to count options that "passed every check" (lib/decline.ts).
+  const passes = passesChecks;
   // The first action should attack the bottleneck: an option far behind the best-fitting eligible one on
   // fit is an alternative, not a first action, however safe or easy it is.
   const bestFit = Math.max(

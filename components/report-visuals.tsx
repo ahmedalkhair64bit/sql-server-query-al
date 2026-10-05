@@ -3,6 +3,7 @@ import type { Candidate } from "@/lib/analyst";
 import type { Digest } from "@/lib/digest";
 import type { Verdict } from "@/lib/jev";
 import { PopNumber } from "./motion";
+import { explainDecline, passesChecks } from "@/lib/decline";
 
 /** A formatted number. Its characters pop in once when it appears (and again if the value changes). */
 export function CountUp({
@@ -64,7 +65,8 @@ const FLAG_TEXT: Record<string, string> = {
     "Jev's weight was split between good options; this is its favourite.",
   nothing_clearly_worthwhile:
     "Jev judged that no option is clearly worth running on this evidence.",
-  no_suitable_action: "Every option failed a safety, evidence or fit check.",
+  no_suitable_action:
+    "Jev judged none of the options a defensible first action yet.",
   jev_partial: "Jev could not review every option; retry to include them.",
   jev_unavailable: "Jev could not be reached, so nothing was selected.",
   analyst_failed:
@@ -87,9 +89,12 @@ function closeCall(verdict: Verdict) {
 export function ProbabilityBars({
   verdict,
   candidates,
+  closest,
 }: {
   verdict: Verdict;
   candidates: Candidate[];
+  /** On a decline: the option that came nearest, marked so the reader knows where to look. */
+  closest?: string | null;
 }) {
   const title = (key: string) =>
     key === "no_suitable_action"
@@ -118,6 +123,9 @@ export function ProbabilityBars({
             >
               <span className="prob-label">
                 {picked && <span className="prob-mark">Pick</span>}
+                {!picked && key === closest && (
+                  <span className="prob-mark closest">Closest</span>
+                )}
                 {title(key)}
               </span>
               <span className="prob-track">
@@ -140,29 +148,22 @@ export function JevDecision({
   candidates,
   onRetry,
   busy,
+  actual,
 }: {
   verdict: Verdict;
   candidates: Candidate[];
   onRetry?: () => void;
   busy: boolean;
+  /** Whether the plan is an actual (measured) plan; a decline on an estimated one says to capture one. */
+  actual?: boolean;
 }) {
   const selected =
     verdict.source === "jev"
       ? candidates.find((c) => c.key === verdict.headline)
       : null;
   const judged = verdict.order.length;
-  const blocked = verdict.order.filter((r) =>
-    r.flags.some((f) =>
-      [
-        "verify_semantics",
-        "invalid_evidence",
-        "low_confidence",
-        "unsupported_claim",
-        "operational_risk",
-        "jev_failed",
-      ].includes(f),
-    ),
-  ).length;
+  // The same checks the decision applied, so this count can never contradict the per-option flags.
+  const passed = verdict.order.filter(passesChecks).length;
   const reasons = verdict.flags.map((f) => FLAG_TEXT[f]).filter(Boolean);
   const healthy = verdict.flags.includes("nothing_to_fix");
   const state = selected
@@ -172,6 +173,10 @@ export function JevDecision({
       : verdict.status === "unavailable"
         ? "unavailable"
         : "abstained";
+  const decline =
+    state === "abstained" && judged > 0
+      ? explainDecline(verdict, candidates, { actual })
+      : null;
   return (
     <section className={`decision-hero ${state}`} data-verdict>
       <div className="decision-main">
@@ -190,7 +195,7 @@ export function JevDecision({
               ? "No change recommended for this plan"
               : state === "unavailable"
                 ? "Decision engine unavailable"
-                : "More evidence is needed")}
+                : (decline?.title ?? "More evidence is needed"))}
         </h2>
         <p className="decision-lead">
           {selected ? (
@@ -202,17 +207,34 @@ export function JevDecision({
             (verdict.reason ??
             "The analyst found no performance problem worth changing.")
           ) : (
-            (reasons[0] ??
+            (decline?.reason ??
+            reasons[0] ??
             "The alternatives below are not approved recommendations. Review the evidence, add context, or retry Jev.")
           )}
         </p>
+        {decline?.closest && (
+          <p className="decline-closest">
+            <strong>Closest: {decline.closest.title}.</strong>{" "}
+            {decline.closest.why}
+          </p>
+        )}
+        {decline && (
+          <div className="decline-next">
+            <p>To get a recommendation:</p>
+            <ul>
+              {decline.next.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         {judged > 0 && (
           <ul className="decision-facts">
             <li>
               <strong>{judged}</strong> options judged
             </li>
             <li>
-              <strong>{judged - blocked}</strong> passed every check
+              <strong>{passed}</strong> passed every check
             </li>
             {verdict.flags.includes("analyst_failed") && (
               <li data-analyst-failed title={verdict.analyst_error}>
@@ -243,12 +265,11 @@ export function JevDecision({
         </div>
       </div>
       <div className="decision-side">
-        {verdict.status !== "unavailable" && judged > 0 && (
+        {/* On a decline there is no decision to be certain about: the split below shows where Jev leaned. */}
+        {selected && (
           <ConfidenceRing
-            value={
-              selected ? verdict.jev_confidence : verdict.anything_worth_running
-            }
-            label={selected ? "Jev's certainty" : "Anything worth running"}
+            value={verdict.jev_confidence}
+            label="Jev's certainty"
           />
         )}
         {selected && verdict.jev_confidence < 0.5 && (
@@ -258,7 +279,11 @@ export function JevDecision({
           </p>
         )}
         {verdict.status !== "unavailable" && (
-          <ProbabilityBars verdict={verdict} candidates={candidates} />
+          <ProbabilityBars
+            verdict={verdict}
+            candidates={candidates}
+            closest={decline?.closest?.key}
+          />
         )}
       </div>
     </section>

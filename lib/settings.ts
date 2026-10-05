@@ -7,7 +7,7 @@ import {
 } from "./db.ts";
 import { seal, open, mask } from "./vault.ts";
 import { providerFor } from "./providers.ts";
-import type { ConnectionStatus } from "./connection.ts";
+import { jevFingerprint, type ConnectionStatus } from "./connection.ts";
 import type { Digest } from "./digest.ts";
 
 export type AnalystConfig = {
@@ -114,6 +114,10 @@ export function saveModelSettings(
       ok: false,
       error: "Replace YOUR-RESOURCE in the Azure URL with your resource name.",
     };
+  const jevBase = str(fd, "jev_base_url").replace(/\/+$/, "");
+  const jevUrlProblem = jevBase ? staticUrlProblem(jevBase) : null;
+  if (jevUrlProblem)
+    return { ok: false, error: `Jev endpoint: ${jevUrlProblem}` };
   const input = {
     analyst_base_url: baseUrl,
     analyst_key: kept(fd, "analyst_key", cur?.analyst_key ?? ""),
@@ -121,6 +125,8 @@ export function saveModelSettings(
     analyst_extra: JSON.stringify(extra),
     jev_key: kept(fd, "jev_key", cur?.jev_key ?? ""),
     jev_model: str(fd, "jev_model") || "jev-latest",
+    // A form without the field (an older client) keeps what is stored.
+    jev_base_url: fd.has("jev_base_url") ? jevBase : (cur?.jev_base_url ?? ""),
     onboarded: cur?.onboarded === 1 ? 1 : (opts.onboarded ?? 1),
   } satisfies SettingsInput;
   if (opts.require) {
@@ -157,6 +163,9 @@ export const jevKey = (userId: string) =>
   open(getSettings(userId)?.jev_key ?? "");
 export const jevModel = (userId: string) =>
   getSettings(userId)?.jev_model || "jev-latest";
+/** The account's own Jev endpoint, or "" for the default service. */
+export const jevBaseUrl = (userId: string) =>
+  getSettings(userId)?.jev_base_url ?? "";
 
 /**
  * The digest the models see. With "send query text" off, the statement text is withheld: the plan's
@@ -196,6 +205,7 @@ export function settingsView(userId: string) {
   const baseUrl = s?.analyst_base_url ?? "";
   const model = s?.analyst_model ?? "";
   const jevModelName = s?.jev_model ?? "jev-latest";
+  const jevBase = s?.jev_base_url ?? "";
   const extra = extraForForm(s?.analyst_extra ?? "{}");
   return {
     analyst_base_url: baseUrl,
@@ -205,6 +215,7 @@ export function settingsView(userId: string) {
     max_tokens: extra.maxTokens,
     provider: providerFor(baseUrl).id,
     jev_model: jevModelName,
+    jev_base_url: jevBase,
     analyst_key_masked: mask(analystKey),
     jev_key_masked: mask(jev),
     has_analyst: !!(baseUrl && model && analystKey),
@@ -214,7 +225,10 @@ export function settingsView(userId: string) {
       s?.analyst_status,
       `${baseUrl}|${model}|${analystKey.slice(-4)}`,
     ),
-    jev_status: parseStatus(s?.jev_status, `${jevModelName}|${jev.slice(-4)}`),
+    jev_status: parseStatus(
+      s?.jev_status,
+      jevFingerprint(jev, jevModelName, jevBase),
+    ),
   };
 }
 export type SettingsView = ReturnType<typeof settingsView>;

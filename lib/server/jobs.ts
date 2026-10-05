@@ -2,6 +2,7 @@ import {
   analystConfig,
   jevKey,
   jevModel,
+  jevBaseUrl,
   digestForModels,
 } from "../settings.ts";
 import { proposeCandidates, AnalystError, type Candidate } from "../analyst.ts";
@@ -45,6 +46,8 @@ export function runKey(userId: string, digest: Digest, note: string): string {
         analyst?.model,
         analyst?.extra,
         jevModel(userId),
+        // Only when set, so results from before custom endpoints existed stay reusable.
+        ...(jevBaseUrl(userId) ? [jevBaseUrl(userId)] : []),
       ]),
     )
     .digest("hex");
@@ -238,7 +241,7 @@ async function run(job: Job, digest: Digest, note: string) {
       verdict = await judgeCandidates(
         modelDigest,
         candidates,
-        makeJevClient(jev, jevModel(userId)),
+        makeJevClient(jev, jevModel(userId), jevBaseUrl(userId)),
         job.ac.signal,
         note,
       );

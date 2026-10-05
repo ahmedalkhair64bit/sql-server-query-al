@@ -283,3 +283,77 @@ test("a password change keeps this session and drops the others", () => {
   assert.equal(db.sessionUserId("mine"), u);
   assert.equal(db.sessionUserId("laptop"), null);
 });
+
+test("a custom Jev endpoint is saved, kept by forms without the field, and refused on metadata addresses", () => {
+  const u = db.createUser("jevurl@x.y", "h");
+  assert.equal(
+    s.saveModelSettings(
+      u,
+      form({ ...full, jev_base_url: "https://jev.internal.example/" }),
+    ).ok,
+    true,
+  );
+  assert.equal(s.jevBaseUrl(u), "https://jev.internal.example");
+  assert.equal(s.settingsView(u).jev_base_url, "https://jev.internal.example");
+  // An older client that does not send the field keeps the stored endpoint.
+  assert.equal(s.saveModelSettings(u, form(full)).ok, true);
+  assert.equal(s.jevBaseUrl(u), "https://jev.internal.example");
+  // Clearing the field goes back to the default service.
+  assert.equal(
+    s.saveModelSettings(u, form({ ...full, jev_base_url: "" })).ok,
+    true,
+  );
+  assert.equal(s.jevBaseUrl(u), "");
+  const bad = s.saveModelSettings(
+    u,
+    form({ ...full, jev_base_url: "http://169.254.169.254/latest" }),
+  );
+  assert.equal(bad.ok, false);
+  assert.match((bad as { error: string }).error, /^Jev endpoint: .*metadata/);
+});
+
+test("a test of one Jev endpoint does not count for another", () => {
+  const a = `${"jev-latest"}|5678`;
+  const u = db.createUser("jevfp@x.y", "h");
+  s.saveModelSettings(u, form(full));
+  db.setModelStatus(
+    u,
+    "jev",
+    JSON.stringify({ ok: true, ms: 5, message: "", fingerprint: a, at: 1 }),
+  );
+  assert.equal(
+    s.settingsView(u).jev_status?.ok,
+    true,
+    "default endpoint: still valid",
+  );
+  s.saveModelSettings(
+    u,
+    form({ ...full, jev_base_url: "https://jev.other.example" }),
+  );
+  assert.equal(
+    s.settingsView(u).jev_status,
+    null,
+    "a different endpoint needs a new test",
+  );
+});
+
+test("the Jev client calls a custom endpoint when one is set", async () => {
+  const { makeJevClient } = await import("../lib/jev.ts");
+  assert.equal(
+    makeJevClient("k", "jev-latest", "https://jev.internal.example").baseURL,
+    "https://jev.internal.example",
+  );
+  assert.notEqual(
+    makeJevClient("k", "jev-latest").baseURL,
+    "https://jev.internal.example",
+  );
+});
+
+test("the custom analyst endpoint is offered right after OpenAI", async () => {
+  const { PROVIDERS } = await import("../lib/providers.ts");
+  assert.deepEqual(
+    PROVIDERS.slice(0, 2).map((p) => p.id),
+    ["openai", "custom"],
+  );
+  assert.equal(PROVIDERS[1].baseUrl, "", "picking it clears the URL field");
+});

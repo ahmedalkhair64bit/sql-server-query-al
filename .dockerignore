@@ -2,6 +2,7 @@
 # credentials, QA recordings, or knowledge-base material to the builder.
 **
 !Dockerfile
+!docker-entrypoint.sh
 !.dockerignore
 !package.json
 !package-lock.json
